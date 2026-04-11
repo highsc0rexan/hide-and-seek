@@ -337,19 +337,11 @@ function draw() {
   if (me && me.role === "seeker" && state.phase === "playing") {
     const radius = 240;
     ctx.save();
-    ctx.fillStyle = "rgba(5, 7, 12, 0.97)";
+    ctx.fillStyle = "#000000";
     ctx.beginPath();
     ctx.rect(0, 0, mapInfo.w, mapInfo.h);
     ctx.arc(me.x, me.y, radius, 0, Math.PI * 2, true);
     ctx.fill("evenodd");
-    // soft edge ring
-    const grad = ctx.createRadialGradient(me.x, me.y, radius - 40, me.x, me.y, radius);
-    grad.addColorStop(0, "rgba(5,7,12,0)");
-    grad.addColorStop(1, "rgba(5,7,12,0.85)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(me.x, me.y, radius, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   }
 }
