@@ -105,8 +105,13 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "a" || e.key === "A") keys.a = true;
   if (e.key === "s" || e.key === "S") keys.s = true;
   if (e.key === "d" || e.key === "D") keys.d = true;
-  if ((e.key === "q" || e.key === "Q") && socket && socket.readyState === 1) {
+  if (!socket || socket.readyState !== 1) return;
+  if (e.key === "q" || e.key === "Q") {
     socket.send(JSON.stringify({ type: "ability" }));
+  } else if (e.key === "t" || e.key === "T") {
+    socket.send(JSON.stringify({ type: "secondary" }));
+  } else if (e.key === "5") {
+    socket.send(JSON.stringify({ type: "laser" }));
   }
 });
 window.addEventListener("keyup", (e) => {
@@ -175,6 +180,7 @@ function renderHud() {
       const role = me.role === "seeker" ? "🔫 Seeker" : "⚡ Hider";
       let status;
       if (!me.alive) status = "💀 dead";
+      else if (me.lasering) status = `💜 LASER ${(me.laserMsLeft/1000).toFixed(1)}s`;
       else if (me.raging) status = `💥 SHOTGUN ${(me.rageMsLeft/1000).toFixed(1)}s`;
       else if (me.phasing) status = `🌀 PHASE ${(me.phaseMsLeft/1000).toFixed(1)}s`;
       else if (me.stunned) status = "⚡ stunned";
@@ -182,9 +188,15 @@ function renderHud() {
       right = `<div class="pill">${role} • ${status}</div>`;
       if (me.alive && !me.raging && !me.phasing) {
         let q;
-        if (me.role === "seeker") q = me.rageUsed ? "Q used" : "Q: SHOTGUN (1×/round)";
-        else q = me.phaseUsed ? "Q used" : "Q: PHASE (1×/round)";
+        if (me.role === "seeker") q = me.rageUsed ? "Q used" : "Q: SHOTGUN";
+        else q = me.phaseUsed ? "Q used" : "Q: PHASE";
         right += `<div class="pill" style="margin-top:6px;">${q}</div>`;
+      }
+      if (me.alive) {
+        const t = me.role === "seeker"
+          ? `T: BOMB (${me.bombsLeft})`
+          : `T: TELEPORT (${me.teleportsLeft})`;
+        right += `<div class="pill" style="margin-top:6px;">${t}</div>`;
       }
       if (me.role === "seeker" && me.alive) {
         const ping = state.pingActive ? "📡 PING!" : `📡 ping in ${(state.nextPingMs/1000).toFixed(1)}s`;
@@ -264,14 +276,50 @@ function draw() {
 
   // bullets
   for (const b of state.bullets) {
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, b.kind === "lethal" ? 4 : 5, 0, Math.PI * 2);
-    ctx.fillStyle = b.kind === "lethal" ? "#ffd24a" : "#7ad3ff";
-    ctx.fill();
-    if (b.kind === "stun") {
-      ctx.strokeStyle = "rgba(122,211,255,.4)";
+    if (b.kind === "bomb") {
+      ctx.fillStyle = "#ff8c1a";
+      ctx.beginPath(); ctx.arc(b.x, b.y, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,140,26,.6)";
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(b.x, b.y, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(b.x, b.y, 12 + Math.sin(Date.now()/80)*2, 0, Math.PI * 2); ctx.stroke();
+    } else if (b.kind === "teleport") {
+      ctx.fillStyle = "#c779ff";
+      ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(199,121,255,.5)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(b.x, b.y, 11, 0, Math.PI * 2); ctx.stroke();
+    } else if (b.kind === "laser") {
+      ctx.shadowColor = "#ff3df0";
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = "#ff3df0";
+      ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.kind === "lethal" ? 4 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = b.kind === "lethal" ? "#ffd24a" : "#7ad3ff";
+      ctx.fill();
+      if (b.kind === "stun") {
+        ctx.strokeStyle = "rgba(122,211,255,.4)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(b.x, b.y, 9, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+  }
+
+  // explosions
+  if (state.explosions) {
+    for (const e of state.explosions) {
+      const t = 1 - Math.max(0, Math.min(1, e.ttl / 700));
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = "#ff8c1a";
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * (0.4 + t * 0.6), 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.7 * (1 - t);
+      ctx.strokeStyle = "#ffd24a";
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * (0.5 + t * 0.6), 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -339,7 +387,7 @@ function draw() {
   // Fog of war: seeker can only see inside a circle around themselves
   const me = getMyPlayer();
   if (me && me.role === "seeker" && state.phase === "playing") {
-    const radius = 240;
+    const radius = 285;
     ctx.save();
     ctx.fillStyle = "#000000";
     ctx.beginPath();

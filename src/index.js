@@ -21,6 +21,16 @@ const SHOTGUN_SPREAD = 0.42;
 const PHASE_DURATION_MS = RAGE_DURATION_MS;
 const PING_INTERVAL_MS = 5000;
 const PING_DURATION_MS = 600;
+const SECONDARY_USES = 4;
+const SECONDARY_COOLDOWN_MS = 350;
+const BOMB_SPEED = 430;
+const BOMB_LIFE = 2.6;
+const BOMB_RADIUS = 115;
+const TELEPORT_SPEED = 780;
+const TELEPORT_LIFE = 0.85;
+const LASER_DURATION_MS = 5000;
+const LASER_FIRE_MS = 70;
+const LASER_SPEED = 950;
 const PHASE_SPEED_MULT = 1.9;
 
 const WALLS = [
@@ -120,6 +130,7 @@ export class GameRoom extends Server {
   async onStart() {
     this.players = new Map();
     this.bullets = [];
+    this.explosions = [];
     this.nextBulletId = 1;
     this.phase = "lobby"; // lobby | playing | ended
     this.roundEndsAt = 0;
@@ -153,6 +164,12 @@ export class GameRoom extends Server {
       wasPhasing: false,
       lastDx: 0,
       lastDy: 0,
+      bombsLeft: SECONDARY_USES,
+      teleportsLeft: SECONDARY_USES,
+      laserEndsAt: 0,
+      laserUsed: false,
+      lastSecondaryAt: 0,
+      lastLaserShotAt: 0,
     });
     connection.send(JSON.stringify({ type: "init", id: connection.id, map: { w: MAP_W, h: MAP_H, walls: WALLS } }));
   }
@@ -183,6 +200,46 @@ export class GameRoom extends Server {
       p.input.right = !!msg.right;
       p.input.shoot = !!msg.shoot;
       p.input.angle = +msg.angle || 0;
+    } else if (msg.type === "secondary") {
+      if (this.phase !== "playing" || !p.alive) return;
+      const tnow = Date.now();
+      if (tnow < this.startsAt) return;
+      if (tnow - p.lastSecondaryAt < SECONDARY_COOLDOWN_MS) return;
+      if (p.role === "seeker" && p.bombsLeft > 0) {
+        p.bombsLeft--;
+        p.lastSecondaryAt = tnow;
+        this.bullets.push({
+          id: this.nextBulletId++,
+          x: p.x + Math.cos(p.angle) * (PLAYER_R + 4),
+          y: p.y + Math.sin(p.angle) * (PLAYER_R + 4),
+          vx: Math.cos(p.angle) * BOMB_SPEED,
+          vy: Math.sin(p.angle) * BOMB_SPEED,
+          owner: p.id,
+          kind: "bomb",
+          life: BOMB_LIFE,
+        });
+      } else if (p.role === "hider" && p.teleportsLeft > 0) {
+        p.teleportsLeft--;
+        p.lastSecondaryAt = tnow;
+        this.bullets.push({
+          id: this.nextBulletId++,
+          x: p.x + Math.cos(p.angle) * (PLAYER_R + 4),
+          y: p.y + Math.sin(p.angle) * (PLAYER_R + 4),
+          vx: Math.cos(p.angle) * TELEPORT_SPEED,
+          vy: Math.sin(p.angle) * TELEPORT_SPEED,
+          owner: p.id,
+          kind: "teleport",
+          life: TELEPORT_LIFE,
+        });
+      }
+    } else if (msg.type === "laser") {
+      if (this.phase !== "playing" || !p.alive) return;
+      const tnow = Date.now();
+      if (tnow < this.startsAt) return;
+      if (p.role === "seeker" && !p.laserUsed) {
+        p.laserUsed = true;
+        p.laserEndsAt = tnow + LASER_DURATION_MS;
+      }
     } else if (msg.type === "ability") {
       if (this.phase !== "playing" || !p.alive) return;
       const now2 = Date.now();
@@ -208,6 +265,10 @@ export class GameRoom extends Server {
         pl.rageUsed = false;
         pl.phaseEndsAt = 0;
         pl.phaseUsed = false;
+        pl.bombsLeft = SECONDARY_USES;
+        pl.teleportsLeft = SECONDARY_USES;
+        pl.laserEndsAt = 0;
+        pl.laserUsed = false;
         const s = randomSpawn();
         pl.x = s.x; pl.y = s.y;
       }
@@ -235,9 +296,15 @@ export class GameRoom extends Server {
       p.rageUsed = false;
       p.phaseEndsAt = 0;
       p.phaseUsed = false;
+      p.bombsLeft = SECONDARY_USES;
+      p.teleportsLeft = SECONDARY_USES;
+      p.laserEndsAt = 0;
+      p.laserUsed = false;
       const s = randomSpawn();
       p.x = s.x; p.y = s.y;
     }
+    this.bullets = [];
+    this.explosions = [];
     this.phase = "playing";
     this.startsAt = Date.now() + HIDER_HEAD_START_MS;
     this.roundEndsAt = this.startsAt + ROUND_SECONDS * 1000;
@@ -303,7 +370,24 @@ export class GameRoom extends Server {
         }
         p.angle = p.input.angle;
 
-        if (p.input.shoot && !stunned && !lockedByHeadStart) {
+        const lasering = now < p.laserEndsAt;
+        if (lasering && p.input.shoot && !stunned && !lockedByHeadStart) {
+          if (now - p.lastLaserShotAt >= LASER_FIRE_MS) {
+            p.lastLaserShotAt = now;
+            this.bullets.push({
+              id: this.nextBulletId++,
+              x: p.x + Math.cos(p.angle) * (PLAYER_R + 2),
+              y: p.y + Math.sin(p.angle) * (PLAYER_R + 2),
+              vx: Math.cos(p.angle) * LASER_SPEED,
+              vy: Math.sin(p.angle) * LASER_SPEED,
+              owner: p.id,
+              kind: "laser",
+              life: 1.4,
+            });
+          }
+        }
+
+        if (p.input.shoot && !stunned && !lockedByHeadStart && !lasering) {
           const cd = raging ? RAGE_FIRE_MS : (p.role === "seeker" ? SEEKER_FIRE_MS : HIDER_FIRE_MS);
           if (now - p.lastShotAt >= cd) {
             p.lastShotAt = now;
@@ -334,33 +418,83 @@ export class GameRoom extends Server {
         b.x += b.vx * dt;
         b.y += b.vy * dt;
         b.life -= dt;
-        if (b.life <= 0) continue;
-        if (b.x < 0 || b.x > MAP_W || b.y < 0 || b.y > MAP_H) continue;
-        let blocked = false;
-        for (const w of WALLS) {
-          if (b.x >= w.x && b.x <= w.x + w.w && b.y >= w.y && b.y <= w.y + w.h) {
-            blocked = true; break;
+        const expired = b.life <= 0;
+        const outOfMap = b.x < 0 || b.x > MAP_W || b.y < 0 || b.y > MAP_H;
+        let wallHit = false;
+        if (b.kind !== "laser") {
+          for (const w of WALLS) {
+            if (b.x >= w.x && b.x <= w.x + w.w && b.y >= w.y && b.y <= w.y + w.h) {
+              wallHit = true; break;
+            }
           }
         }
-        if (blocked) continue;
-        let hit = false;
+        let hitPlayer = null;
         for (const p of this.players.values()) {
           if (!p.alive || p.id === b.owner) continue;
           const dx = p.x - b.x, dy = p.y - b.y;
-          if (dx * dx + dy * dy < PLAYER_R * PLAYER_R) {
-            if (b.kind === "lethal") {
-              if (p.role === "hider") p.alive = false;
-              else p.stunnedUntil = now + STUN_MS;
-            } else {
-              p.stunnedUntil = now + STUN_MS;
-            }
-            hit = true;
-            break;
-          }
+          if (dx * dx + dy * dy < PLAYER_R * PLAYER_R) { hitPlayer = p; break; }
         }
-        if (!hit) next.push(b);
+
+        if (b.kind === "bomb") {
+          if (expired || outOfMap || wallHit || hitPlayer) {
+            for (const p of this.players.values()) {
+              if (!p.alive) continue;
+              const dx = p.x - b.x, dy = p.y - b.y;
+              if (dx * dx + dy * dy < BOMB_RADIUS * BOMB_RADIUS) {
+                if (p.role === "hider") p.alive = false;
+                else if (p.id !== b.owner) p.stunnedUntil = now + STUN_MS;
+              }
+            }
+            this.explosions.push({ id: this.nextBulletId++, x: b.x, y: b.y, r: BOMB_RADIUS, expiresAt: now + 700 });
+            continue;
+          }
+          next.push(b);
+        } else if (b.kind === "teleport") {
+          if (expired || outOfMap || wallHit || hitPlayer) {
+            const owner = this.players.get(b.owner);
+            if (owner && owner.alive) {
+              let tx = b.x, ty = b.y;
+              if (wallHit) { tx -= b.vx * dt * 1.2; ty -= b.vy * dt * 1.2; }
+              tx = Math.max(PLAYER_R + 2, Math.min(MAP_W - PLAYER_R - 2, tx));
+              ty = Math.max(PLAYER_R + 2, Math.min(MAP_H - PLAYER_R - 2, ty));
+              if (isInsideWall(tx, ty, PLAYER_R)) {
+                const nudges = [[0,0],[24,0],[-24,0],[0,24],[0,-24],[40,0],[-40,0],[0,40],[0,-40],[28,28],[-28,-28],[28,-28],[-28,28]];
+                let placed = false;
+                for (const [ox, oy] of nudges) {
+                  const nx = Math.max(PLAYER_R + 2, Math.min(MAP_W - PLAYER_R - 2, tx + ox));
+                  const ny = Math.max(PLAYER_R + 2, Math.min(MAP_H - PLAYER_R - 2, ty + oy));
+                  if (!isInsideWall(nx, ny, PLAYER_R)) { owner.x = nx; owner.y = ny; placed = true; break; }
+                }
+                if (!placed) { const s = randomSpawn(); owner.x = s.x; owner.y = s.y; }
+              } else { owner.x = tx; owner.y = ty; }
+            }
+            continue;
+          }
+          next.push(b);
+        } else if (b.kind === "laser") {
+          if (expired || outOfMap) continue;
+          if (hitPlayer) {
+            if (hitPlayer.role === "hider") hitPlayer.alive = false;
+            else hitPlayer.stunnedUntil = now + STUN_MS;
+            continue;
+          }
+          next.push(b);
+        } else {
+          if (expired || outOfMap || wallHit) continue;
+          if (hitPlayer) {
+            if (b.kind === "lethal") {
+              if (hitPlayer.role === "hider") hitPlayer.alive = false;
+              else hitPlayer.stunnedUntil = now + STUN_MS;
+            } else {
+              hitPlayer.stunnedUntil = now + STUN_MS;
+            }
+            continue;
+          }
+          next.push(b);
+        }
       }
       this.bullets = next;
+      this.explosions = this.explosions.filter(e => e.expiresAt > now);
 
       if (now >= this.startsAt && now - this.lastPingAt >= PING_INTERVAL_MS) {
         this.lastPingAt = now;
@@ -393,8 +527,14 @@ export class GameRoom extends Server {
         phasing: now < p.phaseEndsAt,
         phaseMsLeft: Math.max(0, p.phaseEndsAt - now),
         phaseUsed: p.phaseUsed,
+        bombsLeft: p.bombsLeft,
+        teleportsLeft: p.teleportsLeft,
+        lasering: now < p.laserEndsAt,
+        laserMsLeft: Math.max(0, p.laserEndsAt - now),
+        laserUsed: p.laserUsed,
       })),
       bullets: this.bullets.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), kind: b.kind })),
+      explosions: this.explosions.map(e => ({ id: e.id, x: e.x, y: e.y, r: e.r, ttl: e.expiresAt - now })),
     };
     this.broadcast(JSON.stringify(snapshot));
   }
