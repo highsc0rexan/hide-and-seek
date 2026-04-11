@@ -106,7 +106,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "s" || e.key === "S") keys.s = true;
   if (e.key === "d" || e.key === "D") keys.d = true;
   if ((e.key === "q" || e.key === "Q") && socket && socket.readyState === 1) {
-    socket.send(JSON.stringify({ type: "rage" }));
+    socket.send(JSON.stringify({ type: "ability" }));
   }
 });
 window.addEventListener("keyup", (e) => {
@@ -173,11 +173,18 @@ function renderHud() {
     }
     if (me) {
       const role = me.role === "seeker" ? "🔫 Seeker" : "⚡ Hider";
-      const status = !me.alive ? "💀 dead" : me.raging ? `🔥 RAGE ${(me.rageMsLeft/1000).toFixed(1)}s` : me.stunned ? "⚡ stunned" : "alive";
+      let status;
+      if (!me.alive) status = "💀 dead";
+      else if (me.raging) status = `🔥 RAGE ${(me.rageMsLeft/1000).toFixed(1)}s`;
+      else if (me.phasing) status = `🌀 PHASE ${(me.phaseMsLeft/1000).toFixed(1)}s`;
+      else if (me.stunned) status = "⚡ stunned";
+      else status = "alive";
       right = `<div class="pill">${role} • ${status}</div>`;
-      if (me.role === "seeker" && me.alive && !me.raging) {
-        const q = me.rageUsed ? "Q used" : "Q: RAGE (1× per round)";
-        right = `<div class="pill">${role} • ${status}</div><div class="pill" style="margin-top:6px;">${q}</div>`;
+      if (me.alive && !me.raging && !me.phasing) {
+        let q;
+        if (me.role === "seeker") q = me.rageUsed ? "Q used" : "Q: RAGE (1×/round)";
+        else q = me.phaseUsed ? "Q used" : "Q: PHASE (1×/round)";
+        right += `<div class="pill" style="margin-top:6px;">${q}</div>`;
       }
     }
   }
@@ -270,12 +277,23 @@ function draw() {
     ctx.save();
     ctx.translate(p.x, p.y);
     if (!p.alive) ctx.globalAlpha = 0.3;
+    else if (p.phasing) ctx.globalAlpha = 0.5;
 
     // body
     ctx.beginPath();
     ctx.arc(0, 0, 18, 0, Math.PI * 2);
-    ctx.fillStyle = p.raging ? "#ffb347" : color;
+    ctx.fillStyle = p.raging ? "#ffb347" : p.phasing ? "#b8f5ff" : color;
     ctx.fill();
+    if (p.phasing) {
+      ctx.shadowColor = "#7ad3ff";
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22 + Math.sin(Date.now() / 80) * 2, 0, Math.PI * 2);
+      ctx.strokeStyle = "#7ad3ff";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
     if (p.raging) {
       ctx.shadowColor = "#ff6a00";
       ctx.shadowBlur = 20;
