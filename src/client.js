@@ -105,6 +105,9 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "a" || e.key === "A") keys.a = true;
   if (e.key === "s" || e.key === "S") keys.s = true;
   if (e.key === "d" || e.key === "D") keys.d = true;
+  if ((e.key === "q" || e.key === "Q") && socket && socket.readyState === 1) {
+    socket.send(JSON.stringify({ type: "rage" }));
+  }
 });
 window.addEventListener("keyup", (e) => {
   if (e.key === "w" || e.key === "W") keys.w = false;
@@ -170,8 +173,12 @@ function renderHud() {
     }
     if (me) {
       const role = me.role === "seeker" ? "🔫 Seeker" : "⚡ Hider";
-      const status = !me.alive ? "💀 dead" : me.stunned ? "⚡ stunned" : "alive";
+      const status = !me.alive ? "💀 dead" : me.raging ? `🔥 RAGE ${(me.rageMsLeft/1000).toFixed(1)}s` : me.stunned ? "⚡ stunned" : "alive";
       right = `<div class="pill">${role} • ${status}</div>`;
+      if (me.role === "seeker" && me.alive && !me.raging) {
+        const q = me.rageUsed ? "Q used" : "Q: RAGE (1× per round)";
+        right = `<div class="pill">${role} • ${status}</div><div class="pill" style="margin-top:6px;">${q}</div>`;
+      }
     }
   }
   hud.innerHTML = `<div>${left}</div><div>${right}</div>`;
@@ -267,8 +274,18 @@ function draw() {
     // body
     ctx.beginPath();
     ctx.arc(0, 0, 18, 0, Math.PI * 2);
-    ctx.fillStyle = color;
+    ctx.fillStyle = p.raging ? "#ffb347" : color;
     ctx.fill();
+    if (p.raging) {
+      ctx.shadowColor = "#ff6a00";
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22 + Math.sin(Date.now() / 60) * 2, 0, Math.PI * 2);
+      ctx.strokeStyle = "#ff8c1a";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
     ctx.lineWidth = 3;
     ctx.strokeStyle = p.id === myId ? "#ffffff" : "rgba(0,0,0,.4)";
     ctx.stroke();

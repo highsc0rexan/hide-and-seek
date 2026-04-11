@@ -12,6 +12,9 @@ const STUN_MS = 4000;
 const SEEKER_FIRE_MS = 400;
 const HIDER_FIRE_MS = 900;
 const HIDER_HEAD_START_MS = 8000;
+const RAGE_DURATION_MS = 5000;
+const RAGE_SPEED_MULT = 1.6;
+const RAGE_FIRE_MS = 80;
 
 const WALLS = [
   { x: 0, y: 0, w: MAP_W, h: 20 },
@@ -91,6 +94,8 @@ export class GameRoom extends Server {
       input: { up: false, down: false, left: false, right: false, shoot: false, angle: 0 },
       ready: false,
       preferred: "any",
+      rageEndsAt: 0,
+      rageUsed: false,
     });
     connection.send(JSON.stringify({ type: "init", id: connection.id, map: { w: MAP_W, h: MAP_H, walls: WALLS } }));
   }
@@ -121,6 +126,11 @@ export class GameRoom extends Server {
       p.input.right = !!msg.right;
       p.input.shoot = !!msg.shoot;
       p.input.angle = +msg.angle || 0;
+    } else if (msg.type === "rage") {
+      if (this.phase === "playing" && p.role === "seeker" && p.alive && !p.rageUsed && Date.now() >= this.startsAt) {
+        p.rageUsed = true;
+        p.rageEndsAt = Date.now() + RAGE_DURATION_MS;
+      }
     } else if (msg.type === "start" && connection.id === this.hostId && this.phase !== "playing") {
       this.startGame();
     } else if (msg.type === "restart" && connection.id === this.hostId && this.phase === "ended") {
@@ -131,6 +141,8 @@ export class GameRoom extends Server {
         pl.alive = true;
         pl.role = "hider";
         pl.stunnedUntil = 0;
+        pl.rageEndsAt = 0;
+        pl.rageUsed = false;
         const s = randomSpawn();
         pl.x = s.x; pl.y = s.y;
       }
@@ -154,6 +166,8 @@ export class GameRoom extends Server {
       p.role = p.id === seekerId ? "seeker" : "hider";
       p.alive = true;
       p.stunnedUntil = 0;
+      p.rageEndsAt = 0;
+      p.rageUsed = false;
       const s = randomSpawn();
       p.x = s.x; p.y = s.y;
     }
@@ -186,6 +200,8 @@ export class GameRoom extends Server {
 
       for (const p of this.players.values()) {
         if (!p.alive) continue;
+        const raging = now < p.rageEndsAt;
+        if (raging) p.stunnedUntil = 0;
         const stunned = now < p.stunnedUntil;
         const lockedByHeadStart = seekerLocked && p.role === "seeker";
         if (!stunned && !lockedByHeadStart) {
@@ -196,15 +212,16 @@ export class GameRoom extends Server {
           if (p.input.right) dx += 1;
           const len = Math.hypot(dx, dy);
           if (len > 0) { dx /= len; dy /= len; }
-          const nx = p.x + dx * PLAYER_SPEED * dt;
-          const ny = p.y + dy * PLAYER_SPEED * dt;
+          const speed = PLAYER_SPEED * (raging ? RAGE_SPEED_MULT : 1);
+          const nx = p.x + dx * speed * dt;
+          const ny = p.y + dy * speed * dt;
           if (tryMove(nx, p.y, PLAYER_R)) p.x = nx;
           if (tryMove(p.x, ny, PLAYER_R)) p.y = ny;
         }
         p.angle = p.input.angle;
 
         if (p.input.shoot && !stunned && !lockedByHeadStart) {
-          const cd = p.role === "seeker" ? SEEKER_FIRE_MS : HIDER_FIRE_MS;
+          const cd = raging ? RAGE_FIRE_MS : (p.role === "seeker" ? SEEKER_FIRE_MS : HIDER_FIRE_MS);
           if (now - p.lastShotAt >= cd) {
             p.lastShotAt = now;
             const speed = p.role === "seeker" ? BULLET_SPEED : STUN_SPEED;
@@ -274,6 +291,9 @@ export class GameRoom extends Server {
         id: p.id, name: p.name, x: Math.round(p.x), y: Math.round(p.y),
         angle: +p.angle.toFixed(2), role: p.role, alive: p.alive,
         stunned: now < p.stunnedUntil, preferred: p.preferred,
+        raging: now < p.rageEndsAt,
+        rageMsLeft: Math.max(0, p.rageEndsAt - now),
+        rageUsed: p.rageUsed,
       })),
       bullets: this.bullets.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), kind: b.kind })),
     };
