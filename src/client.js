@@ -186,6 +186,10 @@ function renderHud() {
         else q = me.phaseUsed ? "Q used" : "Q: PHASE (1×/round)";
         right += `<div class="pill" style="margin-top:6px;">${q}</div>`;
       }
+      if (me.role === "seeker" && me.alive) {
+        const ping = state.pingActive ? "📡 PING!" : `📡 ping in ${(state.nextPingMs/1000).toFixed(1)}s`;
+        right += `<div class="pill" style="margin-top:6px;">${ping}</div>`;
+      }
     }
   }
   hud.innerHTML = `<div>${left}</div><div>${right}</div>`;
@@ -343,6 +347,25 @@ function draw() {
     ctx.arc(me.x, me.y, radius, 0, Math.PI * 2, true);
     ctx.fill("evenodd");
     ctx.restore();
+
+    if (state.pingActive) {
+      for (const p of state.players) {
+        if (p.role !== "hider" || !p.alive) continue;
+        ctx.save();
+        ctx.shadowColor = "#ff3b3b";
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = "#ff3b3b";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,80,80,0.7)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
   }
 }
 draw();

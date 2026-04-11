@@ -1,9 +1,10 @@
 import { Server, routePartykitRequest } from "partyserver";
 
-const MAP_W = 1200;
-const MAP_H = 800;
+const MAP_W = 1700;
+const MAP_H = 1100;
 const PLAYER_R = 18;
 const PLAYER_SPEED = 220;
+const SEEKER_SPEED_MULT = 1.2;
 const BULLET_SPEED = 650;
 const STUN_SPEED = 520;
 const TICK_MS = 1000 / 30;
@@ -18,6 +19,8 @@ const RAGE_FIRE_MS = 550;
 const SHOTGUN_PELLETS = 6;
 const SHOTGUN_SPREAD = 0.42;
 const PHASE_DURATION_MS = RAGE_DURATION_MS;
+const PING_INTERVAL_MS = 5000;
+const PING_DURATION_MS = 600;
 const PHASE_SPEED_MULT = 1.9;
 
 const WALLS = [
@@ -25,18 +28,32 @@ const WALLS = [
   { x: 0, y: MAP_H - 20, w: MAP_W, h: 20 },
   { x: 0, y: 0, w: 20, h: MAP_H },
   { x: MAP_W - 20, y: 0, w: 20, h: MAP_H },
-  { x: 150, y: 120, w: 220, h: 30 },
-  { x: 150, y: 120, w: 30, h: 180 },
-  { x: 480, y: 200, w: 30, h: 260 },
-  { x: 480, y: 200, w: 200, h: 30 },
-  { x: 820, y: 130, w: 30, h: 220 },
-  { x: 820, y: 130, w: 220, h: 30 },
-  { x: 250, y: 500, w: 260, h: 30 },
-  { x: 700, y: 520, w: 30, h: 220 },
-  { x: 700, y: 520, w: 240, h: 30 },
-  { x: 950, y: 470, w: 30, h: 240 },
-  { x: 380, y: 620, w: 200, h: 30 },
-  { x: 100, y: 380, w: 180, h: 30 },
+
+  { x: 150, y: 120, w: 260, h: 30 },
+  { x: 150, y: 120, w: 30, h: 200 },
+  { x: 520, y: 200, w: 30, h: 280 },
+  { x: 520, y: 200, w: 220, h: 30 },
+  { x: 880, y: 130, w: 30, h: 260 },
+  { x: 880, y: 130, w: 240, h: 30 },
+  { x: 1260, y: 110, w: 280, h: 30 },
+  { x: 1510, y: 110, w: 30, h: 220 },
+
+  { x: 100, y: 420, w: 200, h: 30 },
+  { x: 270, y: 420, w: 30, h: 180 },
+  { x: 460, y: 540, w: 280, h: 30 },
+  { x: 820, y: 470, w: 30, h: 240 },
+  { x: 820, y: 470, w: 240, h: 30 },
+  { x: 1100, y: 380, w: 30, h: 260 },
+  { x: 1280, y: 470, w: 240, h: 30 },
+  { x: 1490, y: 470, w: 30, h: 220 },
+
+  { x: 220, y: 760, w: 260, h: 30 },
+  { x: 460, y: 760, w: 30, h: 220 },
+  { x: 600, y: 880, w: 240, h: 30 },
+  { x: 900, y: 760, w: 30, h: 220 },
+  { x: 900, y: 760, w: 260, h: 30 },
+  { x: 1230, y: 880, w: 280, h: 30 },
+  { x: 1480, y: 760, w: 30, h: 180 },
 ];
 
 function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -225,6 +242,7 @@ export class GameRoom extends Server {
     this.startsAt = Date.now() + HIDER_HEAD_START_MS;
     this.roundEndsAt = this.startsAt + ROUND_SECONDS * 1000;
     this.winner = null;
+    this.lastPingAt = this.startsAt;
   }
 
   checkWin() {
@@ -267,7 +285,8 @@ export class GameRoom extends Server {
           if (p.input.right) dx += 1;
           const len = Math.hypot(dx, dy);
           if (len > 0) { dx /= len; dy /= len; p.lastDx = dx; p.lastDy = dy; }
-          const mult = raging ? RAGE_SPEED_MULT : phasing ? PHASE_SPEED_MULT : 1;
+          const baseMult = p.role === "seeker" ? SEEKER_SPEED_MULT : 1;
+          const mult = raging ? RAGE_SPEED_MULT : phasing ? PHASE_SPEED_MULT : baseMult;
           const speed = PLAYER_SPEED * mult;
           const nx = p.x + dx * speed * dt;
           const ny = p.y + dy * speed * dt;
@@ -343,6 +362,10 @@ export class GameRoom extends Server {
       }
       this.bullets = next;
 
+      if (now >= this.startsAt && now - this.lastPingAt >= PING_INTERVAL_MS) {
+        this.lastPingAt = now;
+      }
+
       if (now >= this.roundEndsAt) {
         this.phase = "ended";
         this.winner = "hiders";
@@ -358,6 +381,8 @@ export class GameRoom extends Server {
       winner: this.winner,
       timeLeft: this.phase === "playing" ? Math.max(0, Math.ceil((this.roundEndsAt - now) / 1000)) : 0,
       startsIn: this.phase === "playing" ? Math.max(0, Math.ceil((this.startsAt - now) / 1000)) : 0,
+      pingActive: this.phase === "playing" && (now - this.lastPingAt) < PING_DURATION_MS,
+      nextPingMs: this.phase === "playing" ? Math.max(0, this.lastPingAt + PING_INTERVAL_MS - now) : 0,
       players: [...this.players.values()].map(p => ({
         id: p.id, name: p.name, x: Math.round(p.x), y: Math.round(p.y),
         angle: +p.angle.toFixed(2), role: p.role, alive: p.alive,
