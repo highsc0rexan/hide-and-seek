@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Hide & Seek Shooter</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    background: #0b0d12;
+    color: #e6e8ee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  #menu {
+    background: #161a22;
+    border: 1px solid #262b38;
+    border-radius: 14px;
+    padding: 32px;
+    width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  #menu h1 { margin: 0 0 8px; font-size: 22px; }
+  #menu p { margin: 0 0 18px; color: #8a93a6; font-size: 14px; line-height: 1.4; }
+  input, button {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #2c3142;
+    background: #0e1118;
+    color: #e6e8ee;
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  button {
+    background: #3b6cf6;
+    border-color: #3b6cf6;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button.secondary { background: #1e2433; border-color: #2c3142; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  #game { display: none; position: relative; }
+  canvas { display: block; background: #14171f; border-radius: 6px; }
+  #hud {
+    position: absolute; top: 12px; left: 12px; right: 12px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none; font-size: 13px;
+  }
+  #hud .pill {
+    background: rgba(0,0,0,.55); padding: 6px 12px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  #lobby-overlay, #end-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(11,13,18,.85); border-radius: 6px;
+  }
+  #lobby-overlay .panel, #end-overlay .panel {
+    background: #161a22; border: 1px solid #262b38; border-radius: 14px;
+    padding: 28px; min-width: 320px; text-align: center;
+  }
+  .room-code {
+    font-family: ui-monospace, monospace; font-size: 28px; letter-spacing: 4px;
+    background: #0e1118; padding: 12px; border-radius: 8px; margin: 8px 0 16px;
+    border: 1px solid #2c3142;
+  }
+  .player-list { text-align: left; margin: 12px 0; max-height: 160px; overflow: auto; }
+  .player-list .me { color: #6fa8ff; }
+  .footer { margin-top: 18px; font-size: 12px; color: #6b7385; }
+  .footer a { color: #8aa6ff; }
+  .err { color: #ff7a7a; font-size: 13px; margin-bottom: 8px; min-height: 16px; }
+</style>
+</head>
+<body>
+  <div id="menu">
+    <h1>Hide & Seek Shooter</h1>
+    <p>2D top-down multiplayer. Seeker has a real gun. Hiders have stun guns. WASD to move, mouse to aim, click to shoot.</p>
+    <div class="err" id="menu-err"></div>
+    <input id="name-input" placeholder="Your name" maxlength="16" />
+    <button id="create-btn">Create new room</button>
+    <div class="row">
+      <input id="code-input" placeholder="ROOM CODE" maxlength="6" style="text-transform:uppercase" />
+      <button id="join-btn" class="secondary">Join</button>
+    </div>
+    <div class="footer">
+      Made for fun. <a id="repo-link" href="#" target="_blank">source</a>
+    </div>
+  </div>
+
+  <div id="game">
+    <canvas id="canvas" width="1200" height="800"></canvas>
+    <div id="hud"></div>
+    <div id="lobby-overlay">
+      <div class="panel">
+        <div style="font-size:13px;color:#8a93a6;">Room code</div>
+        <div class="room-code" id="room-code-display">------</div>
+        <div style="font-size:13px;color:#8a93a6;">Share this code with friends</div>
+        <div class="player-list" id="lobby-players"></div>
+        <button id="start-btn" disabled>Waiting for players (need 2+)</button>
+        <div class="footer">First connected player is the host and starts the game.</div>
+      </div>
+    </div>
+    <div id="end-overlay" style="display:none;">
+      <div class="panel">
+        <div id="end-title" style="font-size:24px;font-weight:700;margin-bottom:8px;"></div>
+        <div id="end-sub" style="color:#8a93a6;margin-bottom:18px;"></div>
+        <button id="restart-btn">Back to lobby</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/client.js"></script>
+</body>
+</html>
