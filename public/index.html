@@ -67,6 +67,9 @@
     background: #161a22; border: 1px solid #262b38; border-radius: 14px;
     padding: 28px; min-width: 320px; text-align: center;
   }
+  .role-picker { display: flex; gap: 6px; margin: 6px 0 14px; }
+  .role-picker button { flex: 1; margin: 0; padding: 8px 6px; font-size: 13px; }
+  .role-picker button.active { background: #3b6cf6; border-color: #3b6cf6; }
   .room-code {
     font-family: ui-monospace, monospace; font-size: 28px; letter-spacing: 4px;
     background: #0e1118; padding: 12px; border-radius: 8px; margin: 8px 0 16px;
@@ -104,6 +107,12 @@
         <div class="room-code" id="room-code-display">------</div>
         <div style="font-size:13px;color:#8a93a6;">Share this code with friends</div>
         <div class="player-list" id="lobby-players"></div>
+        <div style="font-size:13px;color:#8a93a6;margin-top:8px;">I want to be:</div>
+        <div class="role-picker" id="role-picker">
+          <button data-role="seeker" class="secondary">🔫 Seeker</button>
+          <button data-role="hider" class="secondary">⚡ Hider</button>
+          <button data-role="any" class="secondary">🎲 Random</button>
+        </div>
         <button id="start-btn" disabled>Waiting for players (need 2+)</button>
         <div class="footer">First connected player is the host and starts the game.</div>
       </div>

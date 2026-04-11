@@ -90,6 +90,7 @@ export class GameRoom extends Server {
       lastShotAt: 0,
       input: { up: false, down: false, left: false, right: false, shoot: false, angle: 0 },
       ready: false,
+      preferred: "any",
     });
     connection.send(JSON.stringify({ type: "init", id: connection.id, map: { w: MAP_W, h: MAP_H, walls: WALLS } }));
   }
@@ -110,6 +111,9 @@ export class GameRoom extends Server {
 
     if (msg.type === "name") {
       p.name = String(msg.name || "player").slice(0, 16);
+    } else if (msg.type === "preferred") {
+      const v = msg.role;
+      if (v === "seeker" || v === "hider" || v === "any") p.preferred = v;
     } else if (msg.type === "input") {
       p.input.up = !!msg.up;
       p.input.down = !!msg.down;
@@ -134,17 +138,24 @@ export class GameRoom extends Server {
   }
 
   startGame() {
-    const ids = [...this.players.keys()];
-    if (ids.length < 2) return;
-    const seekerIdx = Math.floor(Math.random() * ids.length);
-    let i = 0;
-    for (const p of this.players.values()) {
-      p.role = i === seekerIdx ? "seeker" : "hider";
+    const players = [...this.players.values()];
+    if (players.length < 2) return;
+    const wantSeeker = players.filter(p => p.preferred === "seeker");
+    const noPref = players.filter(p => p.preferred === "any");
+    let seekerId;
+    if (wantSeeker.length > 0) {
+      seekerId = wantSeeker[Math.floor(Math.random() * wantSeeker.length)].id;
+    } else if (noPref.length > 0) {
+      seekerId = noPref[Math.floor(Math.random() * noPref.length)].id;
+    } else {
+      seekerId = players[Math.floor(Math.random() * players.length)].id;
+    }
+    for (const p of players) {
+      p.role = p.id === seekerId ? "seeker" : "hider";
       p.alive = true;
       p.stunnedUntil = 0;
       const s = randomSpawn();
       p.x = s.x; p.y = s.y;
-      i++;
     }
     this.phase = "playing";
     this.startsAt = Date.now() + HIDER_HEAD_START_MS;
@@ -262,7 +273,7 @@ export class GameRoom extends Server {
       players: [...this.players.values()].map(p => ({
         id: p.id, name: p.name, x: Math.round(p.x), y: Math.round(p.y),
         angle: +p.angle.toFixed(2), role: p.role, alive: p.alive,
-        stunned: now < p.stunnedUntil,
+        stunned: now < p.stunnedUntil, preferred: p.preferred,
       })),
       bullets: this.bullets.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), kind: b.kind })),
     };

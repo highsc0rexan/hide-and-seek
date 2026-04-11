@@ -93,6 +93,13 @@ restartBtn.addEventListener("click", () => {
   if (socket) socket.send(JSON.stringify({ type: "restart" }));
 });
 
+document.querySelectorAll("#role-picker button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (!socket) return;
+    socket.send(JSON.stringify({ type: "preferred", role: btn.dataset.role }));
+  });
+});
+
 window.addEventListener("keydown", (e) => {
   if (e.key === "w" || e.key === "W") keys.w = true;
   if (e.key === "a" || e.key === "A") keys.a = true;
@@ -176,9 +183,14 @@ function renderOverlays() {
     lobbyOverlay.style.display = "flex";
     endOverlay.style.display = "none";
     const isHost = myId === state.hostId;
+    const roleLabel = (r) => r === "seeker" ? " — wants 🔫" : r === "hider" ? " — wants ⚡" : "";
     lobbyPlayers.innerHTML = state.players
-      .map(p => `<div class="${p.id === myId ? "me" : ""}">• ${escapeHtml(p.name)}${p.id === state.hostId ? " (host)" : ""}</div>`)
+      .map(p => `<div class="${p.id === myId ? "me" : ""}">• ${escapeHtml(p.name)}${p.id === state.hostId ? " (host)" : ""}${roleLabel(p.preferred)}</div>`)
       .join("");
+    const me = state.players.find(p => p.id === myId);
+    document.querySelectorAll("#role-picker button").forEach(b => {
+      b.classList.toggle("active", me && b.dataset.role === me.preferred);
+    });
     if (state.players.length >= 2 && isHost) {
       startBtn.disabled = false;
       startBtn.textContent = `Start game (${state.players.length} players)`;
