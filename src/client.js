@@ -175,14 +175,14 @@ function renderHud() {
       const role = me.role === "seeker" ? "🔫 Seeker" : "⚡ Hider";
       let status;
       if (!me.alive) status = "💀 dead";
-      else if (me.raging) status = `🔥 RAGE ${(me.rageMsLeft/1000).toFixed(1)}s`;
+      else if (me.raging) status = `💥 SHOTGUN ${(me.rageMsLeft/1000).toFixed(1)}s`;
       else if (me.phasing) status = `🌀 PHASE ${(me.phaseMsLeft/1000).toFixed(1)}s`;
       else if (me.stunned) status = "⚡ stunned";
       else status = "alive";
       right = `<div class="pill">${role} • ${status}</div>`;
       if (me.alive && !me.raging && !me.phasing) {
         let q;
-        if (me.role === "seeker") q = me.rageUsed ? "Q used" : "Q: RAGE (1×/round)";
+        if (me.role === "seeker") q = me.rageUsed ? "Q used" : "Q: SHOTGUN (1×/round)";
         else q = me.phaseUsed ? "Q used" : "Q: PHASE (1×/round)";
         right += `<div class="pill" style="margin-top:6px;">${q}</div>`;
       }

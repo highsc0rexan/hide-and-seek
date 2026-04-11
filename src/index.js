@@ -13,8 +13,10 @@ const SEEKER_FIRE_MS = 400;
 const HIDER_FIRE_MS = 900;
 const HIDER_HEAD_START_MS = 8000;
 const RAGE_DURATION_MS = 5000;
-const RAGE_SPEED_MULT = 1.6;
-const RAGE_FIRE_MS = 80;
+const RAGE_SPEED_MULT = 1.35;
+const RAGE_FIRE_MS = 550;
+const SHOTGUN_PELLETS = 6;
+const SHOTGUN_SPREAD = 0.42;
 const PHASE_DURATION_MS = 4000;
 const PHASE_SPEED_MULT = 1.9;
 
@@ -53,6 +55,37 @@ function tryMove(x, y, r) {
   for (const w of WALLS) if (circleHitsRect(x, y, r, w)) return false;
   if (x - r < 0 || x + r > MAP_W || y - r < 0 || y + r > MAP_H) return false;
   return true;
+}
+
+function isInsideWall(x, y, r) {
+  for (const w of WALLS) if (circleHitsRect(x, y, r, w)) return true;
+  return false;
+}
+
+function resolveStuck(p, dirX, dirY) {
+  const dirs = [];
+  if (dirX || dirY) {
+    const len = Math.hypot(dirX, dirY);
+    dirs.push([dirX / len, dirY / len]);
+  }
+  for (const c of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]]) {
+    const len = Math.hypot(c[0], c[1]);
+    dirs.push([c[0] / len, c[1] / len]);
+  }
+  for (const [dx, dy] of dirs) {
+    for (let dist = 4; dist <= 240; dist += 4) {
+      const nx = p.x + dx * dist;
+      const ny = p.y + dy * dist;
+      if (nx - PLAYER_R < 0 || nx + PLAYER_R > MAP_W) continue;
+      if (ny - PLAYER_R < 0 || ny + PLAYER_R > MAP_H) continue;
+      if (!isInsideWall(nx, ny, PLAYER_R)) {
+        p.x = nx; p.y = ny;
+        return;
+      }
+    }
+  }
+  const s = randomSpawn();
+  p.x = s.x; p.y = s.y;
 }
 
 function randomSpawn() {
@@ -100,6 +133,9 @@ export class GameRoom extends Server {
       rageUsed: false,
       phaseEndsAt: 0,
       phaseUsed: false,
+      wasPhasing: false,
+      lastDx: 0,
+      lastDy: 0,
     });
     connection.send(JSON.stringify({ type: "init", id: connection.id, map: { w: MAP_W, h: MAP_H, walls: WALLS } }));
   }
@@ -216,6 +252,10 @@ export class GameRoom extends Server {
         if (!p.alive) continue;
         const raging = now < p.rageEndsAt;
         const phasing = now < p.phaseEndsAt;
+        if (p.wasPhasing && !phasing && isInsideWall(p.x, p.y, PLAYER_R)) {
+          resolveStuck(p, p.lastDx, p.lastDy);
+        }
+        p.wasPhasing = phasing;
         if (raging || phasing) p.stunnedUntil = 0;
         const stunned = now < p.stunnedUntil;
         const lockedByHeadStart = seekerLocked && p.role === "seeker";
@@ -226,7 +266,7 @@ export class GameRoom extends Server {
           if (p.input.left) dx -= 1;
           if (p.input.right) dx += 1;
           const len = Math.hypot(dx, dy);
-          if (len > 0) { dx /= len; dy /= len; }
+          if (len > 0) { dx /= len; dy /= len; p.lastDx = dx; p.lastDy = dy; }
           const mult = raging ? RAGE_SPEED_MULT : phasing ? PHASE_SPEED_MULT : 1;
           const speed = PLAYER_SPEED * mult;
           const nx = p.x + dx * speed * dt;
@@ -249,16 +289,23 @@ export class GameRoom extends Server {
           if (now - p.lastShotAt >= cd) {
             p.lastShotAt = now;
             const speed = p.role === "seeker" ? BULLET_SPEED : STUN_SPEED;
-            this.bullets.push({
-              id: this.nextBulletId++,
-              x: p.x + Math.cos(p.angle) * (PLAYER_R + 2),
-              y: p.y + Math.sin(p.angle) * (PLAYER_R + 2),
-              vx: Math.cos(p.angle) * speed,
-              vy: Math.sin(p.angle) * speed,
-              owner: p.id,
-              kind: p.role === "seeker" ? "lethal" : "stun",
-              life: 1.6,
-            });
+            const kind = p.role === "seeker" ? "lethal" : "stun";
+            const pellets = raging ? SHOTGUN_PELLETS : 1;
+            for (let i = 0; i < pellets; i++) {
+              const spread = pellets > 1 ? (Math.random() - 0.5) * SHOTGUN_SPREAD : 0;
+              const a = p.angle + spread;
+              const v = speed * (raging ? 0.95 + Math.random() * 0.15 : 1);
+              this.bullets.push({
+                id: this.nextBulletId++,
+                x: p.x + Math.cos(a) * (PLAYER_R + 2),
+                y: p.y + Math.sin(a) * (PLAYER_R + 2),
+                vx: Math.cos(a) * v,
+                vy: Math.sin(a) * v,
+                owner: p.id,
+                kind,
+                life: raging ? 0.9 : 1.6,
+              });
+            }
           }
         }
       }
