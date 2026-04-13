@@ -140,6 +140,7 @@ export class GameRoom extends Server {
     this.nextBulletId = 1;
     this.nextCloneId = 1;
     this.phase = "lobby"; // lobby | playing | ended
+    this.testMode = false;
     this.roundEndsAt = 0;
     this.startsAt = 0;
     this.winner = null;
@@ -287,8 +288,11 @@ export class GameRoom extends Server {
       }
     } else if (msg.type === "start" && connection.id === this.hostId && this.phase !== "playing") {
       this.startGame();
-    } else if (msg.type === "restart" && connection.id === this.hostId && this.phase === "ended") {
+    } else if (msg.type === "startTest" && connection.id === this.hostId && this.phase !== "playing" && this.players.size === 1) {
+      this.startGame(true);
+    } else if (msg.type === "restart" && connection.id === this.hostId && (this.phase === "ended" || this.testMode)) {
       this.phase = "lobby";
+      this.testMode = false;
       this.bullets = [];
       this.winner = null;
       for (const pl of this.players.values()) {
@@ -313,18 +317,25 @@ export class GameRoom extends Server {
     }
   }
 
-  startGame() {
+  startGame(test = false) {
     const players = [...this.players.values()];
-    if (players.length < 2) return;
-    const wantSeeker = players.filter(p => p.preferred === "seeker");
-    const noPref = players.filter(p => p.preferred === "any");
+    if (!test && players.length < 2) return;
+    if (test && players.length !== 1) return;
+    this.testMode = test;
     let seekerId;
-    if (wantSeeker.length > 0) {
-      seekerId = wantSeeker[Math.floor(Math.random() * wantSeeker.length)].id;
-    } else if (noPref.length > 0) {
-      seekerId = noPref[Math.floor(Math.random() * noPref.length)].id;
+    if (test) {
+      const solo = players[0];
+      seekerId = solo.preferred === "hider" ? null : solo.id;
     } else {
-      seekerId = players[Math.floor(Math.random() * players.length)].id;
+      const wantSeeker = players.filter(p => p.preferred === "seeker");
+      const noPref = players.filter(p => p.preferred === "any");
+      if (wantSeeker.length > 0) {
+        seekerId = wantSeeker[Math.floor(Math.random() * wantSeeker.length)].id;
+      } else if (noPref.length > 0) {
+        seekerId = noPref[Math.floor(Math.random() * noPref.length)].id;
+      } else {
+        seekerId = players[Math.floor(Math.random() * players.length)].id;
+      }
     }
     for (const p of players) {
       p.role = p.id === seekerId ? "seeker" : "hider";
@@ -346,14 +357,14 @@ export class GameRoom extends Server {
     this.explosions = [];
     this.clones = [];
     this.phase = "playing";
-    this.startsAt = Date.now() + HIDER_HEAD_START_MS;
+    this.startsAt = Date.now() + (test ? 0 : HIDER_HEAD_START_MS);
     this.roundEndsAt = this.startsAt + ROUND_SECONDS * 1000;
     this.winner = null;
     this.lastPingAt = this.startsAt;
   }
 
   checkWin() {
-    if (this.phase !== "playing") return;
+    if (this.phase !== "playing" || this.testMode) return;
     const players = [...this.players.values()];
     const hidersAlive = players.filter(p => p.role === "hider" && p.alive).length;
     const seekers = players.filter(p => p.role === "seeker");
@@ -610,7 +621,7 @@ export class GameRoom extends Server {
         this.lastPingAt = now;
       }
 
-      if (now >= this.roundEndsAt) {
+      if (!this.testMode && now >= this.roundEndsAt) {
         this.phase = "ended";
         this.winner = "hiders";
       } else {
@@ -621,6 +632,7 @@ export class GameRoom extends Server {
     const snapshot = {
       type: "state",
       phase: this.phase,
+      testMode: this.testMode,
       hostId: this.hostId,
       winner: this.winner,
       timeLeft: this.phase === "playing" ? Math.max(0, Math.ceil((this.roundEndsAt - now) / 1000)) : 0,

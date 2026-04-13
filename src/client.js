@@ -12,6 +12,7 @@ const endOverlay = $("end-overlay");
 const roomCodeDisplay = $("room-code-display");
 const lobbyPlayers = $("lobby-players");
 const startBtn = $("start-btn");
+const testBtn = $("test-btn");
 const restartBtn = $("restart-btn");
 const endTitle = $("end-title");
 const endSub = $("end-sub");
@@ -88,6 +89,14 @@ nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") createBtn.
 
 startBtn.addEventListener("click", () => {
   if (socket) socket.send(JSON.stringify({ type: "start" }));
+});
+testBtn.addEventListener("click", () => {
+  if (socket) socket.send(JSON.stringify({ type: "startTest" }));
+});
+hud.addEventListener("click", (e) => {
+  if (e.target && e.target.id === "exit-test-link" && socket) {
+    socket.send(JSON.stringify({ type: "restart" }));
+  }
 });
 restartBtn.addEventListener("click", () => {
   if (socket) socket.send(JSON.stringify({ type: "restart" }));
@@ -171,7 +180,9 @@ function renderHud() {
   let left = "";
   let right = "";
   if (state.phase === "playing") {
-    if (state.startsIn > 0) {
+    if (state.testMode) {
+      left = `<div class="pill" style="background:rgba(255,180,50,.2);border-color:#ffb43280;">🧪 TEST MODE <span id="exit-test-link" style="cursor:pointer;text-decoration:underline;pointer-events:auto;margin-left:8px;">exit</span></div>`;
+    } else if (state.startsIn > 0) {
       left = `<div class="pill">Hiders hide! Seeker released in ${state.startsIn}s</div>`;
     } else {
       left = `<div class="pill">Time: ${state.timeLeft}s</div>`;
@@ -235,6 +246,7 @@ function renderOverlays() {
       startBtn.disabled = true;
       startBtn.textContent = "Waiting for host to start";
     }
+    testBtn.style.display = (isHost && state.players.length === 1) ? "block" : "none";
   } else if (state.phase === "playing") {
     lobbyOverlay.style.display = "none";
     endOverlay.style.display = "none";
