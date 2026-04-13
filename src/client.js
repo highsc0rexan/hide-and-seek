@@ -213,10 +213,6 @@ function renderHud() {
         const ping = state.pingActive ? "📡 PING!" : `📡 ping in ${(state.nextPingMs/1000).toFixed(1)}s`;
         right += `<div class="pill" style="margin-top:6px;">${ping}</div>`;
       }
-      if (me.role === "hider" && me.alive) {
-        const c = me.clonesUsed ? "5 used" : "5: 👥 CLONES (1×/round)";
-        right += `<div class="pill" style="margin-top:6px;">${c}</div>`;
-      }
     }
   }
   hud.innerHTML = `<div>${left}</div><div>${right}</div>`;
