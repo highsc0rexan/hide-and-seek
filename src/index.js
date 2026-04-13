@@ -33,6 +33,9 @@ const LASER_FIRE_MS = 70;
 const LASER_SPEED = 950;
 const CLONE_COUNT = 20;
 const CLONE_SPEED = PLAYER_SPEED;
+const CLONE_SHOT_RANGE = 520;
+const CLONE_FIRE_MIN_MS = 900;
+const CLONE_FIRE_JITTER_MS = 700;
 const PHASE_SPEED_MULT = 1.9;
 
 const WALLS = [
@@ -266,6 +269,8 @@ export class GameRoom extends Server {
             alive: true,
             wanderUntil: 0,
             wanderDx: 0, wanderDy: 0,
+            lastShotAt: Date.now() - Math.floor(Math.random() * CLONE_FIRE_MIN_MS),
+            nextFireIn: Math.floor(Math.random() * CLONE_FIRE_JITTER_MS),
           });
         }
       }
@@ -562,7 +567,7 @@ export class GameRoom extends Server {
           dy = c.y - nearest.y;
           const len = Math.hypot(dx, dy) || 1;
           dx /= len; dy /= len;
-          c.angle = Math.atan2(-dy, -dx);
+          c.angle = Math.atan2(nearest.y - c.y, nearest.x - c.x);
         } else {
           if (now > c.wanderUntil) {
             const a = Math.random() * Math.PI * 2;
@@ -578,6 +583,26 @@ export class GameRoom extends Server {
         const ny = c.y + dy * step;
         if (tryMove(nx, c.y, PLAYER_R)) c.x = nx;
         if (tryMove(c.x, ny, PLAYER_R)) c.y = ny;
+
+        // fake stun shots at nearest seeker
+        if (nearest && bestD < CLONE_SHOT_RANGE * CLONE_SHOT_RANGE) {
+          const cd = CLONE_FIRE_MIN_MS + c.nextFireIn;
+          if (now - c.lastShotAt >= cd) {
+            c.lastShotAt = now;
+            c.nextFireIn = Math.floor(Math.random() * CLONE_FIRE_JITTER_MS);
+            const ang = Math.atan2(nearest.y - c.y, nearest.x - c.x) + (Math.random() - 0.5) * 0.15;
+            this.bullets.push({
+              id: this.nextBulletId++,
+              x: c.x + Math.cos(ang) * (PLAYER_R + 2),
+              y: c.y + Math.sin(ang) * (PLAYER_R + 2),
+              vx: Math.cos(ang) * STUN_SPEED,
+              vy: Math.sin(ang) * STUN_SPEED,
+              owner: c.owner,
+              kind: "stun",
+              life: 1.6,
+            });
+          }
+        }
       }
       this.clones = this.clones.filter(c => c.alive);
 
