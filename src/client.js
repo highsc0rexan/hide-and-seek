@@ -109,6 +109,14 @@ document.querySelectorAll("#role-picker button").forEach(btn => {
   });
 });
 
+document.querySelectorAll("#settings-panel input[data-setting]").forEach(input => {
+  input.addEventListener("change", () => {
+    if (!socket) return;
+    if (!state || myId !== state.hostId) return;
+    socket.send(JSON.stringify({ type: "setting", key: input.dataset.setting, value: input.checked }));
+  });
+});
+
 window.addEventListener("keydown", (e) => {
   if (e.key === "w" || e.key === "W") keys.w = true;
   if (e.key === "a" || e.key === "A") keys.a = true;
@@ -233,6 +241,14 @@ function renderOverlays() {
     document.querySelectorAll("#role-picker button").forEach(b => {
       b.classList.toggle("active", me && b.dataset.role === me.preferred);
     });
+    if (state.settings) {
+      document.querySelectorAll("#settings-panel input[data-setting]").forEach(input => {
+        const key = input.dataset.setting;
+        input.checked = !!state.settings[key];
+        input.disabled = !isHost;
+        input.closest(".toggle-row").classList.toggle("disabled", !isHost);
+      });
+    }
     if (state.players.length >= 2 && isHost) {
       startBtn.disabled = false;
       startBtn.textContent = `Start game (${state.players.length} players)`;

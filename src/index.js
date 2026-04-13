@@ -143,6 +143,7 @@ export class GameRoom extends Server {
     this.nextBotId = 1;
     this.phase = "lobby"; // lobby | playing | ended
     this.testMode = false;
+    this.settings = { seekerLaser: true, hiderClones: true, hiderStun: true };
     this.roundEndsAt = 0;
     this.startsAt = 0;
     this.winner = null;
@@ -243,14 +244,21 @@ export class GameRoom extends Server {
           life: TELEPORT_LIFE,
         });
       }
+    } else if (msg.type === "setting") {
+      if (connection.id !== this.hostId) return;
+      if (this.phase !== "lobby") return;
+      const { key, value } = msg;
+      if (key === "seekerLaser" || key === "hiderClones" || key === "hiderStun") {
+        this.settings[key] = !!value;
+      }
     } else if (msg.type === "secret") {
       if (this.phase !== "playing" || !p.alive) return;
       const tnow = Date.now();
       if (tnow < this.startsAt) return;
-      if (p.role === "seeker" && !p.laserUsed) {
+      if (p.role === "seeker" && !p.laserUsed && this.settings.seekerLaser) {
         p.laserUsed = true;
         p.laserEndsAt = tnow + LASER_DURATION_MS;
-      } else if (p.role === "hider" && !p.clonesUsed) {
+      } else if (p.role === "hider" && !p.clonesUsed && this.settings.hiderClones) {
         p.clonesUsed = true;
         for (let i = 0; i < CLONE_COUNT; i++) {
           let cx = p.x, cy = p.y;
@@ -462,7 +470,8 @@ export class GameRoom extends Server {
           }
         }
 
-        if (p.input.shoot && !stunned && !lockedByHeadStart && !lasering) {
+        const canShoot = p.role === "seeker" || this.settings.hiderStun;
+        if (canShoot && p.input.shoot && !stunned && !lockedByHeadStart && !lasering) {
           const cd = raging ? RAGE_FIRE_MS : (p.role === "seeker" ? SEEKER_FIRE_MS : HIDER_FIRE_MS);
           if (now - p.lastShotAt >= cd) {
             p.lastShotAt = now;
@@ -795,6 +804,7 @@ export class GameRoom extends Server {
       phase: this.phase,
       testMode: this.testMode,
       hostId: this.hostId,
+      settings: this.settings,
       winner: this.winner,
       timeLeft: this.phase === "playing" ? Math.max(0, Math.ceil((this.roundEndsAt - now) / 1000)) : 0,
       startsIn: this.phase === "playing" ? Math.max(0, Math.ceil((this.startsAt - now) / 1000)) : 0,

@@ -80,6 +80,14 @@
   .footer { margin-top: 18px; font-size: 12px; color: #6b7385; }
   .footer a { color: #8aa6ff; }
   .err { color: #ff7a7a; font-size: 13px; margin-bottom: 8px; min-height: 16px; }
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; background: #0e1118; border: 1px solid #2c3142;
+    border-radius: 8px; margin: 6px 0; font-size: 13px;
+  }
+  .toggle-row .label { text-align: left; }
+  .toggle-row input[type="checkbox"] { width: auto; margin: 0; }
+  .toggle-row.disabled { opacity: .5; }
 </style>
 </head>
 <body>
@@ -107,6 +115,21 @@
         <div class="room-code" id="room-code-display">------</div>
         <div style="font-size:13px;color:#8a93a6;">Share this code with friends</div>
         <div class="player-list" id="lobby-players"></div>
+        <div style="font-size:13px;color:#8a93a6;margin-top:8px;">Game rules (host only):</div>
+        <div id="settings-panel">
+          <label class="toggle-row" data-key="seekerLaser">
+            <span class="label">🔮 Seeker secret laser</span>
+            <input type="checkbox" data-setting="seekerLaser" />
+          </label>
+          <label class="toggle-row" data-key="hiderClones">
+            <span class="label">👥 Hider secret clones</span>
+            <input type="checkbox" data-setting="hiderClones" />
+          </label>
+          <label class="toggle-row" data-key="hiderStun">
+            <span class="label">⚡ Hider stun gun</span>
+            <input type="checkbox" data-setting="hiderStun" />
+          </label>
+        </div>
         <div style="font-size:13px;color:#8a93a6;margin-top:8px;">I want to be:</div>
         <div class="role-picker" id="role-picker">
           <button data-role="seeker" class="secondary">🔫 Seeker</button>
