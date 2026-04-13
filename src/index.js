@@ -137,8 +137,10 @@ export class GameRoom extends Server {
     this.bullets = [];
     this.explosions = [];
     this.clones = [];
+    this.bots = [];
     this.nextBulletId = 1;
     this.nextCloneId = 1;
+    this.nextBotId = 1;
     this.phase = "lobby"; // lobby | playing | ended
     this.testMode = false;
     this.roundEndsAt = 0;
@@ -312,9 +314,25 @@ export class GameRoom extends Server {
         pl.x = s.x; pl.y = s.y;
       }
       this.clones = [];
+      this.bots = [];
       this.bullets = [];
       this.explosions = [];
     }
+  }
+
+  makeBot(role) {
+    const s = randomSpawn();
+    return {
+      id: `bot-${this.nextBotId++}`,
+      name: role === "seeker" ? "seeker-bot" : "hider-bot",
+      role,
+      x: s.x, y: s.y, angle: 0,
+      alive: true,
+      stunnedUntil: 0,
+      respawnAt: 0,
+      lastShotAt: 0,
+      wanderDx: 0, wanderDy: 0, wanderUntil: 0,
+    };
   }
 
   startGame(test = false) {
@@ -356,6 +374,12 @@ export class GameRoom extends Server {
     this.bullets = [];
     this.explosions = [];
     this.clones = [];
+    this.bots = [];
+    if (test) {
+      const solo = players[0];
+      const botRole = solo.role === "seeker" ? "hider" : "seeker";
+      this.bots.push(this.makeBot(botRole));
+    }
     this.phase = "playing";
     this.startsAt = Date.now() + (test ? 0 : HIDER_HEAD_START_MS);
     this.roundEndsAt = this.startsAt + ROUND_SECONDS * 1000;
@@ -493,9 +517,15 @@ export class GameRoom extends Server {
             if (dx * dx + dy * dy < PLAYER_R * PLAYER_R) { hitClone = c; break; }
           }
         }
+        let hitBot = null;
+        for (const bot of this.bots) {
+          if (!bot.alive || bot.id === b.owner) continue;
+          const dx = bot.x - b.x, dy = bot.y - b.y;
+          if (dx * dx + dy * dy < PLAYER_R * PLAYER_R) { hitBot = bot; break; }
+        }
 
         if (b.kind === "bomb") {
-          if (expired || outOfMap || wallHit || hitPlayer || hitClone) {
+          if (expired || outOfMap || wallHit || hitPlayer || hitClone || hitBot) {
             for (const p of this.players.values()) {
               if (!p.alive) continue;
               const dx = p.x - b.x, dy = p.y - b.y;
@@ -508,6 +538,14 @@ export class GameRoom extends Server {
               if (!c.alive) continue;
               const dx = c.x - b.x, dy = c.y - b.y;
               if (dx * dx + dy * dy < BOMB_RADIUS * BOMB_RADIUS) c.alive = false;
+            }
+            for (const bot of this.bots) {
+              if (!bot.alive) continue;
+              const dx = bot.x - b.x, dy = bot.y - b.y;
+              if (dx * dx + dy * dy < BOMB_RADIUS * BOMB_RADIUS) {
+                if (bot.role === "hider") { bot.alive = false; bot.respawnAt = now + 3000; }
+                else bot.stunnedUntil = now + STUN_MS;
+              }
             }
             this.explosions.push({ id: this.nextBulletId++, x: b.x, y: b.y, r: BOMB_RADIUS, expiresAt: now + 700 });
             continue;
@@ -543,6 +581,11 @@ export class GameRoom extends Server {
             continue;
           }
           if (hitClone) { hitClone.alive = false; continue; }
+          if (hitBot) {
+            if (hitBot.role === "hider") { hitBot.alive = false; hitBot.respawnAt = now + 3000; }
+            else hitBot.stunnedUntil = now + STUN_MS;
+            continue;
+          }
           next.push(b);
         } else {
           if (expired || outOfMap || wallHit) continue;
@@ -556,6 +599,15 @@ export class GameRoom extends Server {
             continue;
           }
           if (b.kind === "lethal" && hitClone) { hitClone.alive = false; continue; }
+          if (hitBot) {
+            if (b.kind === "lethal") {
+              if (hitBot.role === "hider") { hitBot.alive = false; hitBot.respawnAt = now + 3000; }
+              else hitBot.stunnedUntil = now + STUN_MS;
+            } else if (hitBot.role === "seeker") {
+              hitBot.stunnedUntil = now + STUN_MS;
+            }
+            continue;
+          }
           next.push(b);
         }
       }
@@ -617,6 +669,115 @@ export class GameRoom extends Server {
       }
       this.clones = this.clones.filter(c => c.alive);
 
+      // Bot AI (test mode)
+      for (const bot of this.bots) {
+        if (!bot.alive) {
+          if (now >= bot.respawnAt) {
+            const s = randomSpawn();
+            bot.x = s.x; bot.y = s.y;
+            bot.alive = true;
+            bot.stunnedUntil = 0;
+          }
+          continue;
+        }
+        if (now < bot.stunnedUntil) continue;
+
+        if (bot.role === "seeker") {
+          let target = null, bestD = Infinity;
+          for (const p of this.players.values()) {
+            if (p.role !== "hider" || !p.alive) continue;
+            const dx = p.x - bot.x, dy = p.y - bot.y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; target = p; }
+          }
+          for (const c of this.clones) {
+            if (!c.alive) continue;
+            const dx = c.x - bot.x, dy = c.y - bot.y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; target = c; }
+          }
+          if (target) {
+            const dx = target.x - bot.x, dy = target.y - bot.y;
+            const len = Math.hypot(dx, dy) || 1;
+            const nx = bot.x + (dx / len) * PLAYER_SPEED * SEEKER_SPEED_MULT * dt;
+            const ny = bot.y + (dy / len) * PLAYER_SPEED * SEEKER_SPEED_MULT * dt;
+            if (tryMove(nx, bot.y, PLAYER_R)) bot.x = nx;
+            if (tryMove(bot.x, ny, PLAYER_R)) bot.y = ny;
+            bot.angle = Math.atan2(dy, dx);
+            if (bestD < 420 * 420 && now - bot.lastShotAt >= SEEKER_FIRE_MS * 1.3) {
+              bot.lastShotAt = now;
+              const a = bot.angle + (Math.random() - 0.5) * 0.12;
+              this.bullets.push({
+                id: this.nextBulletId++,
+                x: bot.x + Math.cos(a) * (PLAYER_R + 2),
+                y: bot.y + Math.sin(a) * (PLAYER_R + 2),
+                vx: Math.cos(a) * BULLET_SPEED,
+                vy: Math.sin(a) * BULLET_SPEED,
+                owner: bot.id,
+                kind: "lethal",
+                life: 1.6,
+              });
+            }
+          } else {
+            if (now > bot.wanderUntil) {
+              const a = Math.random() * Math.PI * 2;
+              bot.wanderDx = Math.cos(a);
+              bot.wanderDy = Math.sin(a);
+              bot.wanderUntil = now + 1000 + Math.random() * 1000;
+            }
+            const nx = bot.x + bot.wanderDx * PLAYER_SPEED * dt;
+            const ny = bot.y + bot.wanderDy * PLAYER_SPEED * dt;
+            if (tryMove(nx, bot.y, PLAYER_R)) bot.x = nx;
+            if (tryMove(bot.x, ny, PLAYER_R)) bot.y = ny;
+            bot.angle = Math.atan2(bot.wanderDy, bot.wanderDx);
+          }
+        } else {
+          // hider bot: flee nearest seeker, wander if far
+          let nearest = null, bestD = Infinity;
+          for (const p of this.players.values()) {
+            if (p.role !== "seeker" || !p.alive) continue;
+            const dx = bot.x - p.x, dy = bot.y - p.y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; nearest = p; }
+          }
+          let dx, dy;
+          if (nearest && bestD < 500 * 500) {
+            dx = bot.x - nearest.x;
+            dy = bot.y - nearest.y;
+            const len = Math.hypot(dx, dy) || 1;
+            dx /= len; dy /= len;
+            bot.angle = Math.atan2(nearest.y - bot.y, nearest.x - bot.x);
+          } else {
+            if (now > bot.wanderUntil) {
+              const a = Math.random() * Math.PI * 2;
+              bot.wanderDx = Math.cos(a);
+              bot.wanderDy = Math.sin(a);
+              bot.wanderUntil = now + 800 + Math.random() * 1200;
+            }
+            dx = bot.wanderDx; dy = bot.wanderDy;
+            bot.angle = Math.atan2(dy, dx);
+          }
+          const nx = bot.x + dx * PLAYER_SPEED * dt;
+          const ny = bot.y + dy * PLAYER_SPEED * dt;
+          if (tryMove(nx, bot.y, PLAYER_R)) bot.x = nx;
+          if (tryMove(bot.x, ny, PLAYER_R)) bot.y = ny;
+          if (nearest && bestD < CLONE_SHOT_RANGE * CLONE_SHOT_RANGE && now - bot.lastShotAt >= HIDER_FIRE_MS) {
+            bot.lastShotAt = now;
+            const a = Math.atan2(nearest.y - bot.y, nearest.x - bot.x) + (Math.random() - 0.5) * 0.15;
+            this.bullets.push({
+              id: this.nextBulletId++,
+              x: bot.x + Math.cos(a) * (PLAYER_R + 2),
+              y: bot.y + Math.sin(a) * (PLAYER_R + 2),
+              vx: Math.cos(a) * STUN_SPEED,
+              vy: Math.sin(a) * STUN_SPEED,
+              owner: bot.id,
+              kind: "stun",
+              life: 1.6,
+            });
+          }
+        }
+      }
+
       if (now >= this.startsAt && now - this.lastPingAt >= PING_INTERVAL_MS) {
         this.lastPingAt = now;
       }
@@ -639,23 +800,30 @@ export class GameRoom extends Server {
       startsIn: this.phase === "playing" ? Math.max(0, Math.ceil((this.startsAt - now) / 1000)) : 0,
       pingActive: this.phase === "playing" && (now - this.lastPingAt) < PING_DURATION_MS,
       nextPingMs: this.phase === "playing" ? Math.max(0, this.lastPingAt + PING_INTERVAL_MS - now) : 0,
-      players: [...this.players.values()].map(p => ({
-        id: p.id, name: p.name, x: Math.round(p.x), y: Math.round(p.y),
-        angle: +p.angle.toFixed(2), role: p.role, alive: p.alive,
-        stunned: now < p.stunnedUntil, preferred: p.preferred,
-        raging: now < p.rageEndsAt,
-        rageMsLeft: Math.max(0, p.rageEndsAt - now),
-        rageUsed: p.rageUsed,
-        phasing: now < p.phaseEndsAt,
-        phaseMsLeft: Math.max(0, p.phaseEndsAt - now),
-        phaseUsed: p.phaseUsed,
-        bombsLeft: p.bombsLeft,
-        teleportsLeft: p.teleportsLeft,
-        lasering: now < p.laserEndsAt,
-        laserMsLeft: Math.max(0, p.laserEndsAt - now),
-        laserUsed: p.laserUsed,
-        clonesUsed: p.clonesUsed,
-      })),
+      players: [
+        ...[...this.players.values()].map(p => ({
+          id: p.id, name: p.name, x: Math.round(p.x), y: Math.round(p.y),
+          angle: +p.angle.toFixed(2), role: p.role, alive: p.alive,
+          stunned: now < p.stunnedUntil, preferred: p.preferred,
+          raging: now < p.rageEndsAt,
+          rageMsLeft: Math.max(0, p.rageEndsAt - now),
+          rageUsed: p.rageUsed,
+          phasing: now < p.phaseEndsAt,
+          phaseMsLeft: Math.max(0, p.phaseEndsAt - now),
+          phaseUsed: p.phaseUsed,
+          bombsLeft: p.bombsLeft,
+          teleportsLeft: p.teleportsLeft,
+          lasering: now < p.laserEndsAt,
+          laserMsLeft: Math.max(0, p.laserEndsAt - now),
+          laserUsed: p.laserUsed,
+          clonesUsed: p.clonesUsed,
+        })),
+        ...this.bots.filter(b => b.alive).map(b => ({
+          id: b.id, name: b.name, x: Math.round(b.x), y: Math.round(b.y),
+          angle: +b.angle.toFixed(2), role: b.role, alive: b.alive,
+          stunned: now < b.stunnedUntil, isBot: true,
+        })),
+      ],
       bullets: this.bullets.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), kind: b.kind })),
       explosions: this.explosions.map(e => ({ id: e.id, x: e.x, y: e.y, r: e.r, ttl: e.expiresAt - now })),
       clones: this.clones.filter(c => c.alive).map(c => ({

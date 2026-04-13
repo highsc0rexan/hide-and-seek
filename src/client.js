@@ -230,6 +230,7 @@ function renderOverlays() {
     const isHost = myId === state.hostId;
     const roleLabel = (r) => r === "seeker" ? " — wants 🔫" : r === "hider" ? " — wants ⚡" : "";
     lobbyPlayers.innerHTML = state.players
+      .filter(p => !p.isBot)
       .map(p => `<div class="${p.id === myId ? "me" : ""}">• ${escapeHtml(p.name)}${p.id === state.hostId ? " (host)" : ""}${roleLabel(p.preferred)}</div>`)
       .join("");
     const me = state.players.find(p => p.id === myId);
