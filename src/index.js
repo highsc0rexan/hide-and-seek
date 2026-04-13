@@ -31,6 +31,8 @@ const TELEPORT_LIFE = 0.85;
 const LASER_DURATION_MS = 5000;
 const LASER_FIRE_MS = 70;
 const LASER_SPEED = 950;
+const CLONE_COUNT = 20;
+const CLONE_SPEED = PLAYER_SPEED;
 const PHASE_SPEED_MULT = 1.9;
 
 const WALLS = [
@@ -131,7 +133,9 @@ export class GameRoom extends Server {
     this.players = new Map();
     this.bullets = [];
     this.explosions = [];
+    this.clones = [];
     this.nextBulletId = 1;
+    this.nextCloneId = 1;
     this.phase = "lobby"; // lobby | playing | ended
     this.roundEndsAt = 0;
     this.startsAt = 0;
@@ -168,6 +172,7 @@ export class GameRoom extends Server {
       teleportsLeft: SECONDARY_USES,
       laserEndsAt: 0,
       laserUsed: false,
+      clonesUsed: false,
       lastSecondaryAt: 0,
       lastLaserShotAt: 0,
     });
@@ -232,13 +237,37 @@ export class GameRoom extends Server {
           life: TELEPORT_LIFE,
         });
       }
-    } else if (msg.type === "laser") {
+    } else if (msg.type === "secret") {
       if (this.phase !== "playing" || !p.alive) return;
       const tnow = Date.now();
       if (tnow < this.startsAt) return;
       if (p.role === "seeker" && !p.laserUsed) {
         p.laserUsed = true;
         p.laserEndsAt = tnow + LASER_DURATION_MS;
+      } else if (p.role === "hider" && !p.clonesUsed) {
+        p.clonesUsed = true;
+        for (let i = 0; i < CLONE_COUNT; i++) {
+          let cx = p.x, cy = p.y;
+          for (let tries = 0; tries < 8; tries++) {
+            const a = Math.random() * Math.PI * 2;
+            const d = 25 + Math.random() * 70;
+            const tx = p.x + Math.cos(a) * d;
+            const ty = p.y + Math.sin(a) * d;
+            if (tx - PLAYER_R < 0 || tx + PLAYER_R > MAP_W) continue;
+            if (ty - PLAYER_R < 0 || ty + PLAYER_R > MAP_H) continue;
+            if (!isInsideWall(tx, ty, PLAYER_R)) { cx = tx; cy = ty; break; }
+          }
+          this.clones.push({
+            id: this.nextCloneId++,
+            owner: p.id,
+            name: p.name,
+            x: cx, y: cy,
+            angle: Math.random() * Math.PI * 2,
+            alive: true,
+            wanderUntil: 0,
+            wanderDx: 0, wanderDy: 0,
+          });
+        }
       }
     } else if (msg.type === "ability") {
       if (this.phase !== "playing" || !p.alive) return;
@@ -269,9 +298,13 @@ export class GameRoom extends Server {
         pl.teleportsLeft = SECONDARY_USES;
         pl.laserEndsAt = 0;
         pl.laserUsed = false;
+        pl.clonesUsed = false;
         const s = randomSpawn();
         pl.x = s.x; pl.y = s.y;
       }
+      this.clones = [];
+      this.bullets = [];
+      this.explosions = [];
     }
   }
 
@@ -300,11 +333,13 @@ export class GameRoom extends Server {
       p.teleportsLeft = SECONDARY_USES;
       p.laserEndsAt = 0;
       p.laserUsed = false;
+      p.clonesUsed = false;
       const s = randomSpawn();
       p.x = s.x; p.y = s.y;
     }
     this.bullets = [];
     this.explosions = [];
+    this.clones = [];
     this.phase = "playing";
     this.startsAt = Date.now() + HIDER_HEAD_START_MS;
     this.roundEndsAt = this.startsAt + ROUND_SECONDS * 1000;
@@ -434,9 +469,17 @@ export class GameRoom extends Server {
           const dx = p.x - b.x, dy = p.y - b.y;
           if (dx * dx + dy * dy < PLAYER_R * PLAYER_R) { hitPlayer = p; break; }
         }
+        let hitClone = null;
+        if (b.kind === "lethal" || b.kind === "laser" || b.kind === "bomb") {
+          for (const c of this.clones) {
+            if (!c.alive) continue;
+            const dx = c.x - b.x, dy = c.y - b.y;
+            if (dx * dx + dy * dy < PLAYER_R * PLAYER_R) { hitClone = c; break; }
+          }
+        }
 
         if (b.kind === "bomb") {
-          if (expired || outOfMap || wallHit || hitPlayer) {
+          if (expired || outOfMap || wallHit || hitPlayer || hitClone) {
             for (const p of this.players.values()) {
               if (!p.alive) continue;
               const dx = p.x - b.x, dy = p.y - b.y;
@@ -444,6 +487,11 @@ export class GameRoom extends Server {
                 if (p.role === "hider") p.alive = false;
                 else if (p.id !== b.owner) p.stunnedUntil = now + STUN_MS;
               }
+            }
+            for (const c of this.clones) {
+              if (!c.alive) continue;
+              const dx = c.x - b.x, dy = c.y - b.y;
+              if (dx * dx + dy * dy < BOMB_RADIUS * BOMB_RADIUS) c.alive = false;
             }
             this.explosions.push({ id: this.nextBulletId++, x: b.x, y: b.y, r: BOMB_RADIUS, expiresAt: now + 700 });
             continue;
@@ -478,6 +526,7 @@ export class GameRoom extends Server {
             else hitPlayer.stunnedUntil = now + STUN_MS;
             continue;
           }
+          if (hitClone) { hitClone.alive = false; continue; }
           next.push(b);
         } else {
           if (expired || outOfMap || wallHit) continue;
@@ -490,11 +539,47 @@ export class GameRoom extends Server {
             }
             continue;
           }
+          if (b.kind === "lethal" && hitClone) { hitClone.alive = false; continue; }
           next.push(b);
         }
       }
       this.bullets = next;
       this.explosions = this.explosions.filter(e => e.expiresAt > now);
+
+      // Clone AI: flee nearest alive seeker
+      for (const c of this.clones) {
+        if (!c.alive) continue;
+        let nearest = null, bestD = Infinity;
+        for (const p of this.players.values()) {
+          if (p.role !== "seeker" || !p.alive) continue;
+          const dx = c.x - p.x, dy = c.y - p.y;
+          const d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; nearest = p; }
+        }
+        let dx, dy;
+        if (nearest && bestD < 600 * 600) {
+          dx = c.x - nearest.x;
+          dy = c.y - nearest.y;
+          const len = Math.hypot(dx, dy) || 1;
+          dx /= len; dy /= len;
+          c.angle = Math.atan2(-dy, -dx);
+        } else {
+          if (now > c.wanderUntil) {
+            const a = Math.random() * Math.PI * 2;
+            c.wanderDx = Math.cos(a);
+            c.wanderDy = Math.sin(a);
+            c.wanderUntil = now + 800 + Math.random() * 1200;
+          }
+          dx = c.wanderDx; dy = c.wanderDy;
+          c.angle = Math.atan2(dy, dx);
+        }
+        const step = CLONE_SPEED * dt;
+        const nx = c.x + dx * step;
+        const ny = c.y + dy * step;
+        if (tryMove(nx, c.y, PLAYER_R)) c.x = nx;
+        if (tryMove(c.x, ny, PLAYER_R)) c.y = ny;
+      }
+      this.clones = this.clones.filter(c => c.alive);
 
       if (now >= this.startsAt && now - this.lastPingAt >= PING_INTERVAL_MS) {
         this.lastPingAt = now;
@@ -532,9 +617,13 @@ export class GameRoom extends Server {
         lasering: now < p.laserEndsAt,
         laserMsLeft: Math.max(0, p.laserEndsAt - now),
         laserUsed: p.laserUsed,
+        clonesUsed: p.clonesUsed,
       })),
       bullets: this.bullets.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), kind: b.kind })),
       explosions: this.explosions.map(e => ({ id: e.id, x: e.x, y: e.y, r: e.r, ttl: e.expiresAt - now })),
+      clones: this.clones.filter(c => c.alive).map(c => ({
+        id: c.id, x: Math.round(c.x), y: Math.round(c.y), angle: +c.angle.toFixed(2), name: c.name, owner: c.owner,
+      })),
     };
     this.broadcast(JSON.stringify(snapshot));
   }

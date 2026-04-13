@@ -111,7 +111,7 @@ window.addEventListener("keydown", (e) => {
   } else if (e.key === "t" || e.key === "T") {
     socket.send(JSON.stringify({ type: "secondary" }));
   } else if (e.key === "5") {
-    socket.send(JSON.stringify({ type: "laser" }));
+    socket.send(JSON.stringify({ type: "secret" }));
   }
 });
 window.addEventListener("keyup", (e) => {
@@ -201,6 +201,10 @@ function renderHud() {
       if (me.role === "seeker" && me.alive) {
         const ping = state.pingActive ? "📡 PING!" : `📡 ping in ${(state.nextPingMs/1000).toFixed(1)}s`;
         right += `<div class="pill" style="margin-top:6px;">${ping}</div>`;
+      }
+      if (me.role === "hider" && me.alive) {
+        const c = me.clonesUsed ? "5 used" : "5: 👥 CLONES (1×/round)";
+        right += `<div class="pill" style="margin-top:6px;">${c}</div>`;
       }
     }
   }
@@ -323,6 +327,29 @@ function draw() {
     }
   }
 
+  // clones (drawn under players so they look indistinguishable but don't overdraw labels)
+  if (state.clones) {
+    for (const c of state.clones) {
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.beginPath();
+      ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      ctx.fillStyle = ROLE_COLORS.hider;
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,.4)";
+      ctx.stroke();
+      ctx.rotate(c.angle);
+      ctx.fillStyle = "#202533";
+      ctx.fillRect(10, -3, 18, 6);
+      ctx.restore();
+      ctx.fillStyle = "#e6e8ee";
+      ctx.font = "12px -apple-system, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(c.name, c.x, c.y - 26);
+    }
+  }
+
   // players
   for (const p of state.players) {
     const color = ROLE_COLORS[p.role] || "#aaa";
@@ -397,22 +424,25 @@ function draw() {
     ctx.restore();
 
     if (state.pingActive) {
-      for (const p of state.players) {
-        if (p.role !== "hider" || !p.alive) continue;
+      const blip = (x, y) => {
         ctx.save();
         ctx.shadowColor = "#ff3b3b";
         ctx.shadowBlur = 16;
         ctx.fillStyle = "#ff3b3b";
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+        ctx.arc(x, y, 7, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = "rgba(255,80,80,0.7)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+        ctx.arc(x, y, 14, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+      };
+      for (const p of state.players) {
+        if (p.role === "hider" && p.alive) blip(p.x, p.y);
       }
+      if (state.clones) for (const c of state.clones) blip(c.x, c.y);
     }
   }
 }
