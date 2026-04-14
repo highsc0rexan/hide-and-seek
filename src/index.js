@@ -9,6 +9,7 @@ const TICK_MS = 1000 / 30;
 const ROUND_SECONDS = 150;
 const STUN_MS = 4000;
 const STUN_IMMUNITY_MS = 2000;
+const SEEKER_STUN_IMMUNITY_MS = 6000;
 const SEEKER_FIRE_MS = 400;
 const HIDER_FIRE_MS = 900;
 const HIDER_HEAD_START_MS = 8000;
@@ -217,7 +218,8 @@ function resolveStuck(p, dirX, dirY, map) {
 function applyStun(target, now) {
   if (now < (target.stunImmuneUntil || 0)) return;
   target.stunnedUntil = now + STUN_MS;
-  target.stunImmuneUntil = target.stunnedUntil + STUN_IMMUNITY_MS;
+  const immunity = target.role === "seeker" ? SEEKER_STUN_IMMUNITY_MS : STUN_IMMUNITY_MS;
+  target.stunImmuneUntil = target.stunnedUntil + immunity;
 }
 
 function randomSpawn(map) {
