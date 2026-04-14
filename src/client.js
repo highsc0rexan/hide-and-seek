@@ -391,7 +391,10 @@ function draw() {
   }
 
   // players
+  const viewer = getMyPlayer();
+  const seekerBlind = viewer && viewer.role === "seeker" && !viewer.raging;
   for (const p of state.players) {
+    if (seekerBlind && p.role === "hider" && p.phasing && p.id !== myId) continue;
     const color = ROLE_COLORS[p.role] || "#aaa";
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -451,9 +454,9 @@ function draw() {
     }
   }
 
-  // Fog of war: seeker can only see inside a circle around themselves
-  const me = getMyPlayer();
-  if (me && me.role === "seeker" && state.phase === "playing") {
+  // Fog of war: seeker can only see inside a circle around themselves (rage clears fog)
+  const me = viewer;
+  if (me && me.role === "seeker" && !me.raging && state.phase === "playing") {
     const radius = 285;
     ctx.save();
     ctx.fillStyle = "#000000";
@@ -480,7 +483,7 @@ function draw() {
         ctx.restore();
       };
       for (const p of state.players) {
-        if (p.role === "hider" && p.alive) blip(p.x, p.y);
+        if (p.role === "hider" && p.alive && !p.phasing) blip(p.x, p.y);
       }
       if (state.clones) for (const c of state.clones) blip(c.x, c.y);
     }
