@@ -375,7 +375,7 @@ export class GameRoom extends Server {
       if (tnow < this.startsAt) return;
       if (p.role === "seeker" && !p.laserUsed && this.settings.seekerLaser) {
         p.laserUsed = true;
-        p.laserEndsAt = tnow + LASER_DURATION_MS;
+        p.laserEndsAt = Number.MAX_SAFE_INTEGER;
       } else if (p.role === "hider" && !p.clonesUsed && this.settings.hiderClones) {
         p.clonesUsed = true;
         for (let i = 0; i < CLONE_COUNT; i++) {

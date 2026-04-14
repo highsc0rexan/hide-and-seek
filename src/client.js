@@ -210,7 +210,7 @@ function renderHud() {
       const role = me.role === "seeker" ? "🔫 Seeker" : "⚡ Hider";
       let status;
       if (!me.alive) status = "💀 dead";
-      else if (me.lasering) status = `💜 LASER ${(me.laserMsLeft/1000).toFixed(1)}s`;
+      else if (me.lasering) status = `💜 LASER`;
       else if (me.raging) status = `💥 SHOTGUN ${(me.rageMsLeft/1000).toFixed(1)}s`;
       else if (me.phasing) status = `🌀 PHASE ${(me.phaseMsLeft/1000).toFixed(1)}s`;
       else if (me.stunned) status = "⚡ stunned";
