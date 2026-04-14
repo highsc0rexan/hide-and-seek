@@ -283,6 +283,7 @@ export class GameRoom extends Server {
     this.phase = "lobby"; // lobby | playing | ended
     this.testMode = false;
     this.map = MAPS[0];
+    this.hostSeekerId = null;
     this.settings = { seekerLaser: true, hiderClones: true, hiderStun: true };
     this.roundEndsAt = 0;
     this.startsAt = 0;
@@ -332,6 +333,7 @@ export class GameRoom extends Server {
     if (this.hostId === connection.id) {
       this.hostId = this.players.keys().next().value || null;
     }
+    if (this.hostSeekerId === connection.id) this.hostSeekerId = null;
     if (this.phase === "playing") this.checkWin();
   }
 
@@ -391,6 +393,14 @@ export class GameRoom extends Server {
       const { key, value } = msg;
       if (key === "seekerLaser" || key === "hiderClones" || key === "hiderStun") {
         this.settings[key] = !!value;
+      }
+    } else if (msg.type === "assignSeeker") {
+      if (connection.id !== this.hostId) return;
+      if (this.phase !== "lobby") return;
+      if (msg.playerId === null) {
+        this.hostSeekerId = null;
+      } else if (this.players.has(msg.playerId)) {
+        this.hostSeekerId = this.hostSeekerId === msg.playerId ? null : msg.playerId;
       }
     } else if (msg.type === "setMap") {
       if (connection.id !== this.hostId) return;
@@ -458,6 +468,7 @@ export class GameRoom extends Server {
     } else if (msg.type === "restart" && connection.id === this.hostId && (this.phase === "ended" || this.testMode)) {
       this.phase = "lobby";
       this.testMode = false;
+      this.hostSeekerId = null;
       this.bullets = [];
       this.winner = null;
       for (const pl of this.players.values()) {
@@ -509,6 +520,8 @@ export class GameRoom extends Server {
     if (test) {
       const solo = players[0];
       seekerId = solo.preferred === "hider" ? null : solo.id;
+    } else if (this.hostSeekerId && this.players.has(this.hostSeekerId)) {
+      seekerId = this.hostSeekerId;
     } else {
       const wantSeeker = players.filter(p => p.preferred === "seeker");
       const noPref = players.filter(p => p.preferred === "any");
@@ -963,6 +976,7 @@ export class GameRoom extends Server {
       phase: this.phase,
       testMode: this.testMode,
       hostId: this.hostId,
+      hostSeekerId: this.hostSeekerId,
       mapId: this.map.id,
       settings: this.settings,
       winner: this.winner,

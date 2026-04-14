@@ -112,6 +112,13 @@ document.querySelectorAll("#role-picker button").forEach(btn => {
   });
 });
 
+lobbyPlayers.addEventListener("click", (e) => {
+  const btn = e.target.closest(".assign-btn");
+  if (!btn || !socket) return;
+  if (!state || myId !== state.hostId) return;
+  socket.send(JSON.stringify({ type: "assignSeeker", playerId: btn.dataset.pid }));
+});
+
 document.querySelectorAll("#map-picker button").forEach(btn => {
   btn.addEventListener("click", () => {
     if (!socket) return;
@@ -268,7 +275,11 @@ function renderOverlays() {
     const roleLabel = (r) => r === "seeker" ? " — wants 🔫" : r === "hider" ? " — wants ⚡" : "";
     lobbyPlayers.innerHTML = state.players
       .filter(p => !p.isBot)
-      .map(p => `<div class="${p.id === myId ? "me" : ""}">• ${escapeHtml(p.name)}${p.id === state.hostId ? " (host)" : ""}${roleLabel(p.preferred)}</div>`)
+      .map(p => {
+        const assigned = state.hostSeekerId === p.id ? " 🔫 SEEKER" : "";
+        const btn = isHost ? ` <button class="assign-btn" data-pid="${p.id}" style="margin:0 0 0 6px;padding:2px 8px;font-size:11px;width:auto;display:inline-block;">${state.hostSeekerId === p.id ? "clear" : "make seeker"}</button>` : "";
+        return `<div class="${p.id === myId ? "me" : ""}">• ${escapeHtml(p.name)}${p.id === state.hostId ? " (host)" : ""}${roleLabel(p.preferred)}${assigned}${btn}</div>`;
+      })
       .join("");
     const me = state.players.find(p => p.id === myId);
     document.querySelectorAll("#role-picker button").forEach(b => {
