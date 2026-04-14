@@ -66,6 +66,9 @@ function joinRoom(code) {
       state = msg;
       renderHud();
       renderOverlays();
+    } else if (msg.type === "mapUpdate") {
+      mapInfo = msg.map;
+      resize();
     }
   });
   socket.addEventListener("close", () => {
@@ -106,6 +109,14 @@ document.querySelectorAll("#role-picker button").forEach(btn => {
   btn.addEventListener("click", () => {
     if (!socket) return;
     socket.send(JSON.stringify({ type: "preferred", role: btn.dataset.role }));
+  });
+});
+
+document.querySelectorAll("#map-picker button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (!socket) return;
+    if (!state || myId !== state.hostId) return;
+    socket.send(JSON.stringify({ type: "setMap", mapId: btn.dataset.map }));
   });
 });
 
@@ -249,6 +260,10 @@ function renderOverlays() {
         input.closest(".toggle-row").classList.toggle("disabled", !isHost);
       });
     }
+    document.querySelectorAll("#map-picker button").forEach(b => {
+      b.classList.toggle("active", state.mapId === b.dataset.map);
+      b.disabled = !isHost;
+    });
     if (state.players.length >= 2 && isHost) {
       startBtn.disabled = false;
       startBtn.textContent = `Start game (${state.players.length} players)`;

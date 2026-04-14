@@ -88,6 +88,16 @@
   .toggle-row .label { text-align: left; }
   .toggle-row input[type="checkbox"] { width: auto; margin: 0; }
   .toggle-row.disabled { opacity: .5; }
+  .map-picker {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    margin: 6px 0 10px;
+  }
+  .map-picker button {
+    margin: 0; padding: 8px 4px; font-size: 12px;
+    background: #1e2433; border-color: #2c3142;
+  }
+  .map-picker button.active { background: #3b6cf6; border-color: #3b6cf6; }
+  .map-picker button:disabled { cursor: default; }
 </style>
 </head>
 <body>
@@ -115,6 +125,14 @@
         <div class="room-code" id="room-code-display">------</div>
         <div style="font-size:13px;color:#8a93a6;">Share this code with friends</div>
         <div class="player-list" id="lobby-players"></div>
+        <div style="font-size:13px;color:#8a93a6;margin-top:8px;">Map (host only):</div>
+        <div class="map-picker" id="map-picker">
+          <button data-map="classic">Classic</button>
+          <button data-map="arena">Arena</button>
+          <button data-map="maze">Maze</button>
+          <button data-map="islands">Islands</button>
+          <button data-map="grid">Grid</button>
+        </div>
         <div style="font-size:13px;color:#8a93a6;margin-top:8px;">Game rules (host only):</div>
         <div id="settings-panel">
           <label class="toggle-row" data-key="seekerLaser">

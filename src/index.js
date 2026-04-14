@@ -1,7 +1,5 @@
 import { Server, routePartykitRequest } from "partyserver";
 
-const MAP_W = 1700;
-const MAP_H = 1100;
 const PLAYER_R = 18;
 const PLAYER_SPEED = 220;
 const SEEKER_SPEED_MULT = 1.2;
@@ -10,6 +8,7 @@ const STUN_SPEED = 520;
 const TICK_MS = 1000 / 30;
 const ROUND_SECONDS = 150;
 const STUN_MS = 4000;
+const STUN_IMMUNITY_MS = 2000;
 const SEEKER_FIRE_MS = 400;
 const HIDER_FIRE_MS = 900;
 const HIDER_HEAD_START_MS = 8000;
@@ -38,38 +37,133 @@ const CLONE_FIRE_MIN_MS = 900;
 const CLONE_FIRE_JITTER_MS = 700;
 const PHASE_SPEED_MULT = 1.9;
 
-const WALLS = [
-  { x: 0, y: 0, w: MAP_W, h: 20 },
-  { x: 0, y: MAP_H - 20, w: MAP_W, h: 20 },
-  { x: 0, y: 0, w: 20, h: MAP_H },
-  { x: MAP_W - 20, y: 0, w: 20, h: MAP_H },
+function makeMap(id, name, w, h, interior) {
+  const walls = [
+    { x: 0, y: 0, w, h: 20 },
+    { x: 0, y: h - 20, w, h: 20 },
+    { x: 0, y: 0, w: 20, h },
+    { x: w - 20, y: 0, w: 20, h },
+    ...interior,
+  ];
+  return { id, name, w, h, walls };
+}
 
-  { x: 150, y: 120, w: 260, h: 30 },
-  { x: 150, y: 120, w: 30, h: 200 },
-  { x: 520, y: 200, w: 30, h: 280 },
-  { x: 520, y: 200, w: 220, h: 30 },
-  { x: 880, y: 130, w: 30, h: 260 },
-  { x: 880, y: 130, w: 240, h: 30 },
-  { x: 1260, y: 110, w: 280, h: 30 },
-  { x: 1510, y: 110, w: 30, h: 220 },
-
-  { x: 100, y: 420, w: 200, h: 30 },
-  { x: 270, y: 420, w: 30, h: 180 },
-  { x: 460, y: 540, w: 280, h: 30 },
-  { x: 820, y: 470, w: 30, h: 240 },
-  { x: 820, y: 470, w: 240, h: 30 },
-  { x: 1100, y: 380, w: 30, h: 260 },
-  { x: 1280, y: 470, w: 240, h: 30 },
-  { x: 1490, y: 470, w: 30, h: 220 },
-
-  { x: 220, y: 760, w: 260, h: 30 },
-  { x: 460, y: 760, w: 30, h: 220 },
-  { x: 600, y: 880, w: 240, h: 30 },
-  { x: 900, y: 760, w: 30, h: 220 },
-  { x: 900, y: 760, w: 260, h: 30 },
-  { x: 1230, y: 880, w: 280, h: 30 },
-  { x: 1480, y: 760, w: 30, h: 180 },
+const MAPS = [
+  makeMap("classic", "Classic", 1700, 1100, [
+    { x: 150, y: 120, w: 260, h: 30 },
+    { x: 150, y: 120, w: 30, h: 200 },
+    { x: 520, y: 200, w: 30, h: 280 },
+    { x: 520, y: 200, w: 220, h: 30 },
+    { x: 880, y: 130, w: 30, h: 260 },
+    { x: 880, y: 130, w: 240, h: 30 },
+    { x: 1260, y: 110, w: 280, h: 30 },
+    { x: 1510, y: 110, w: 30, h: 220 },
+    { x: 100, y: 420, w: 200, h: 30 },
+    { x: 270, y: 420, w: 30, h: 180 },
+    { x: 460, y: 540, w: 280, h: 30 },
+    { x: 820, y: 470, w: 30, h: 240 },
+    { x: 820, y: 470, w: 240, h: 30 },
+    { x: 1100, y: 380, w: 30, h: 260 },
+    { x: 1280, y: 470, w: 240, h: 30 },
+    { x: 1490, y: 470, w: 30, h: 220 },
+    { x: 220, y: 760, w: 260, h: 30 },
+    { x: 460, y: 760, w: 30, h: 220 },
+    { x: 600, y: 880, w: 240, h: 30 },
+    { x: 900, y: 760, w: 30, h: 220 },
+    { x: 900, y: 760, w: 260, h: 30 },
+    { x: 1230, y: 880, w: 280, h: 30 },
+    { x: 1480, y: 760, w: 30, h: 180 },
+  ]),
+  makeMap("arena", "Arena", 1200, 800, [
+    { x: 300, y: 260, w: 200, h: 30 },
+    { x: 700, y: 260, w: 200, h: 30 },
+    { x: 300, y: 510, w: 200, h: 30 },
+    { x: 700, y: 510, w: 200, h: 30 },
+    { x: 560, y: 360, w: 80, h: 80 },
+  ]),
+  makeMap("maze", "Maze", 1900, 1300, [
+    { x: 180, y: 180, w: 400, h: 30 },
+    { x: 180, y: 180, w: 30, h: 300 },
+    { x: 680, y: 180, w: 30, h: 420 },
+    { x: 680, y: 180, w: 400, h: 30 },
+    { x: 1180, y: 180, w: 30, h: 300 },
+    { x: 1180, y: 180, w: 400, h: 30 },
+    { x: 1680, y: 180, w: 30, h: 420 },
+    { x: 280, y: 380, w: 300, h: 30 },
+    { x: 280, y: 580, w: 30, h: 200 },
+    { x: 400, y: 580, w: 300, h: 30 },
+    { x: 800, y: 380, w: 30, h: 300 },
+    { x: 900, y: 580, w: 200, h: 30 },
+    { x: 1080, y: 380, w: 30, h: 300 },
+    { x: 1280, y: 480, w: 30, h: 300 },
+    { x: 1280, y: 480, w: 300, h: 30 },
+    { x: 1480, y: 580, w: 200, h: 30 },
+    { x: 180, y: 820, w: 400, h: 30 },
+    { x: 180, y: 820, w: 30, h: 260 },
+    { x: 680, y: 780, w: 30, h: 300 },
+    { x: 780, y: 880, w: 300, h: 30 },
+    { x: 1080, y: 780, w: 30, h: 300 },
+    { x: 1180, y: 880, w: 400, h: 30 },
+    { x: 1580, y: 780, w: 30, h: 300 },
+    { x: 380, y: 1080, w: 1200, h: 30 },
+    { x: 380, y: 1080, w: 30, h: 180 },
+    { x: 1580, y: 1080, w: 30, h: 180 },
+  ]),
+  makeMap("islands", "Islands", 1800, 1200, [
+    { x: 200, y: 180, w: 220, h: 30 },
+    { x: 200, y: 180, w: 30, h: 160 },
+    { x: 390, y: 180, w: 30, h: 160 },
+    { x: 200, y: 310, w: 220, h: 30 },
+    { x: 680, y: 140, w: 260, h: 30 },
+    { x: 680, y: 140, w: 30, h: 180 },
+    { x: 910, y: 140, w: 30, h: 180 },
+    { x: 1200, y: 240, w: 200, h: 30 },
+    { x: 1200, y: 240, w: 30, h: 200 },
+    { x: 1370, y: 240, w: 30, h: 200 },
+    { x: 1540, y: 140, w: 180, h: 30 },
+    { x: 1540, y: 140, w: 30, h: 260 },
+    { x: 1690, y: 140, w: 30, h: 260 },
+    { x: 340, y: 560, w: 260, h: 30 },
+    { x: 340, y: 560, w: 30, h: 220 },
+    { x: 570, y: 560, w: 30, h: 220 },
+    { x: 340, y: 750, w: 260, h: 30 },
+    { x: 820, y: 480, w: 240, h: 30 },
+    { x: 820, y: 480, w: 30, h: 260 },
+    { x: 1030, y: 480, w: 30, h: 260 },
+    { x: 820, y: 710, w: 240, h: 30 },
+    { x: 1280, y: 620, w: 220, h: 30 },
+    { x: 1280, y: 620, w: 30, h: 180 },
+    { x: 1470, y: 620, w: 30, h: 180 },
+    { x: 280, y: 900, w: 260, h: 30 },
+    { x: 640, y: 920, w: 260, h: 30 },
+    { x: 1000, y: 940, w: 260, h: 30 },
+    { x: 1400, y: 900, w: 260, h: 30 },
+  ]),
+  makeMap("grid", "Grid", 1600, 1000, [
+    { x: 240, y: 180, w: 60, h: 60 },
+    { x: 520, y: 180, w: 60, h: 60 },
+    { x: 800, y: 180, w: 60, h: 60 },
+    { x: 1080, y: 180, w: 60, h: 60 },
+    { x: 1360, y: 180, w: 60, h: 60 },
+    { x: 240, y: 420, w: 60, h: 60 },
+    { x: 520, y: 420, w: 60, h: 60 },
+    { x: 800, y: 420, w: 60, h: 60 },
+    { x: 1080, y: 420, w: 60, h: 60 },
+    { x: 1360, y: 420, w: 60, h: 60 },
+    { x: 240, y: 660, w: 60, h: 60 },
+    { x: 520, y: 660, w: 60, h: 60 },
+    { x: 800, y: 660, w: 60, h: 60 },
+    { x: 1080, y: 660, w: 60, h: 60 },
+    { x: 1360, y: 660, w: 60, h: 60 },
+    { x: 140, y: 300, w: 30, h: 180 },
+    { x: 1430, y: 300, w: 30, h: 180 },
+    { x: 640, y: 540, w: 320, h: 30 },
+  ]),
 ];
+
+function getMap(id) {
+  return MAPS.find(m => m.id === id) || MAPS[0];
+}
 
 function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
@@ -83,18 +177,18 @@ function circleHitsRect(cx, cy, cr, r) {
   return dx * dx + dy * dy < cr * cr;
 }
 
-function tryMove(x, y, r) {
-  for (const w of WALLS) if (circleHitsRect(x, y, r, w)) return false;
-  if (x - r < 0 || x + r > MAP_W || y - r < 0 || y + r > MAP_H) return false;
+function tryMove(x, y, r, map) {
+  for (const w of map.walls) if (circleHitsRect(x, y, r, w)) return false;
+  if (x - r < 0 || x + r > map.w || y - r < 0 || y + r > map.h) return false;
   return true;
 }
 
-function isInsideWall(x, y, r) {
-  for (const w of WALLS) if (circleHitsRect(x, y, r, w)) return true;
+function isInsideWall(x, y, r, map) {
+  for (const w of map.walls) if (circleHitsRect(x, y, r, w)) return true;
   return false;
 }
 
-function resolveStuck(p, dirX, dirY) {
+function resolveStuck(p, dirX, dirY, map) {
   const dirs = [];
   if (dirX || dirY) {
     const len = Math.hypot(dirX, dirY);
@@ -108,25 +202,31 @@ function resolveStuck(p, dirX, dirY) {
     for (let dist = 4; dist <= 240; dist += 4) {
       const nx = p.x + dx * dist;
       const ny = p.y + dy * dist;
-      if (nx - PLAYER_R < 0 || nx + PLAYER_R > MAP_W) continue;
-      if (ny - PLAYER_R < 0 || ny + PLAYER_R > MAP_H) continue;
-      if (!isInsideWall(nx, ny, PLAYER_R)) {
+      if (nx - PLAYER_R < 0 || nx + PLAYER_R > map.w) continue;
+      if (ny - PLAYER_R < 0 || ny + PLAYER_R > map.h) continue;
+      if (!isInsideWall(nx, ny, PLAYER_R, map)) {
         p.x = nx; p.y = ny;
         return;
       }
     }
   }
-  const s = randomSpawn();
+  const s = randomSpawn(map);
   p.x = s.x; p.y = s.y;
 }
 
-function randomSpawn() {
+function applyStun(target, now) {
+  if (now < (target.stunImmuneUntil || 0)) return;
+  target.stunnedUntil = now + STUN_MS;
+  target.stunImmuneUntil = target.stunnedUntil + STUN_IMMUNITY_MS;
+}
+
+function randomSpawn(map) {
   for (let i = 0; i < 200; i++) {
-    const x = 40 + Math.random() * (MAP_W - 80);
-    const y = 40 + Math.random() * (MAP_H - 80);
-    if (tryMove(x, y, PLAYER_R + 4)) return { x, y };
+    const x = 40 + Math.random() * (map.w - 80);
+    const y = 40 + Math.random() * (map.h - 80);
+    if (tryMove(x, y, PLAYER_R + 4, map)) return { x, y };
   }
-  return { x: MAP_W / 2, y: MAP_H / 2 };
+  return { x: map.w / 2, y: map.h / 2 };
 }
 
 export class GameRoom extends Server {
@@ -143,6 +243,7 @@ export class GameRoom extends Server {
     this.nextBotId = 1;
     this.phase = "lobby"; // lobby | playing | ended
     this.testMode = false;
+    this.map = MAPS[0];
     this.settings = { seekerLaser: true, hiderClones: true, hiderStun: true };
     this.roundEndsAt = 0;
     this.startsAt = 0;
@@ -154,7 +255,7 @@ export class GameRoom extends Server {
 
   onConnect(connection) {
     if (!this.hostId) this.hostId = connection.id;
-    const spawn = randomSpawn();
+    const spawn = randomSpawn(this.map);
     this.players.set(connection.id, {
       id: connection.id,
       name: "player",
@@ -164,6 +265,7 @@ export class GameRoom extends Server {
       role: "hider",
       alive: true,
       stunnedUntil: 0,
+      stunImmuneUntil: 0,
       lastShotAt: 0,
       input: { up: false, down: false, left: false, right: false, shoot: false, angle: 0 },
       ready: false,
@@ -183,7 +285,7 @@ export class GameRoom extends Server {
       lastSecondaryAt: 0,
       lastLaserShotAt: 0,
     });
-    connection.send(JSON.stringify({ type: "init", id: connection.id, map: { w: MAP_W, h: MAP_H, walls: WALLS } }));
+    connection.send(JSON.stringify({ type: "init", id: connection.id, map: { id: this.map.id, name: this.map.name, w: this.map.w, h: this.map.h, walls: this.map.walls } }));
   }
 
   onClose(connection) {
@@ -251,6 +353,20 @@ export class GameRoom extends Server {
       if (key === "seekerLaser" || key === "hiderClones" || key === "hiderStun") {
         this.settings[key] = !!value;
       }
+    } else if (msg.type === "setMap") {
+      if (connection.id !== this.hostId) return;
+      if (this.phase !== "lobby") return;
+      const next = getMap(msg.mapId);
+      if (!next) return;
+      this.map = next;
+      this.broadcast(JSON.stringify({
+        type: "mapUpdate",
+        map: { id: next.id, name: next.name, w: next.w, h: next.h, walls: next.walls },
+      }));
+      for (const pl of this.players.values()) {
+        const s = randomSpawn(this.map);
+        pl.x = s.x; pl.y = s.y;
+      }
     } else if (msg.type === "secret") {
       if (this.phase !== "playing" || !p.alive) return;
       const tnow = Date.now();
@@ -267,9 +383,9 @@ export class GameRoom extends Server {
             const d = 25 + Math.random() * 70;
             const tx = p.x + Math.cos(a) * d;
             const ty = p.y + Math.sin(a) * d;
-            if (tx - PLAYER_R < 0 || tx + PLAYER_R > MAP_W) continue;
-            if (ty - PLAYER_R < 0 || ty + PLAYER_R > MAP_H) continue;
-            if (!isInsideWall(tx, ty, PLAYER_R)) { cx = tx; cy = ty; break; }
+            if (tx - PLAYER_R < 0 || tx + PLAYER_R > this.map.w) continue;
+            if (ty - PLAYER_R < 0 || ty + PLAYER_R > this.map.h) continue;
+            if (!isInsideWall(tx, ty, PLAYER_R, this.map)) { cx = tx; cy = ty; break; }
           }
           this.clones.push({
             id: this.nextCloneId++,
@@ -309,6 +425,7 @@ export class GameRoom extends Server {
         pl.alive = true;
         pl.role = "hider";
         pl.stunnedUntil = 0;
+        pl.stunImmuneUntil = 0;
         pl.rageEndsAt = 0;
         pl.rageUsed = false;
         pl.phaseEndsAt = 0;
@@ -318,7 +435,7 @@ export class GameRoom extends Server {
         pl.laserEndsAt = 0;
         pl.laserUsed = false;
         pl.clonesUsed = false;
-        const s = randomSpawn();
+        const s = randomSpawn(this.map);
         pl.x = s.x; pl.y = s.y;
       }
       this.clones = [];
@@ -329,7 +446,7 @@ export class GameRoom extends Server {
   }
 
   makeBot(role) {
-    const s = randomSpawn();
+    const s = randomSpawn(this.map);
     return {
       id: `bot-${this.nextBotId++}`,
       name: role === "seeker" ? "seeker-bot" : "hider-bot",
@@ -337,6 +454,7 @@ export class GameRoom extends Server {
       x: s.x, y: s.y, angle: 0,
       alive: true,
       stunnedUntil: 0,
+      stunImmuneUntil: 0,
       respawnAt: 0,
       lastShotAt: 0,
       wanderDx: 0, wanderDy: 0, wanderUntil: 0,
@@ -367,6 +485,7 @@ export class GameRoom extends Server {
       p.role = p.id === seekerId ? "seeker" : "hider";
       p.alive = true;
       p.stunnedUntil = 0;
+      p.stunImmuneUntil = 0;
       p.rageEndsAt = 0;
       p.rageUsed = false;
       p.phaseEndsAt = 0;
@@ -376,7 +495,7 @@ export class GameRoom extends Server {
       p.laserEndsAt = 0;
       p.laserUsed = false;
       p.clonesUsed = false;
-      const s = randomSpawn();
+      const s = randomSpawn(this.map);
       p.x = s.x; p.y = s.y;
     }
     this.bullets = [];
@@ -412,6 +531,7 @@ export class GameRoom extends Server {
     const now = Date.now();
     const dt = Math.min(0.1, (now - this.lastTick) / 1000);
     this.lastTick = now;
+    const map = this.map;
 
     if (this.phase === "playing") {
       const seekerLocked = now < this.startsAt;
@@ -420,8 +540,8 @@ export class GameRoom extends Server {
         if (!p.alive) continue;
         const raging = now < p.rageEndsAt;
         const phasing = now < p.phaseEndsAt;
-        if (p.wasPhasing && !phasing && isInsideWall(p.x, p.y, PLAYER_R)) {
-          resolveStuck(p, p.lastDx, p.lastDy);
+        if (p.wasPhasing && !phasing && isInsideWall(p.x, p.y, PLAYER_R, map)) {
+          resolveStuck(p, p.lastDx, p.lastDy, map);
         }
         p.wasPhasing = phasing;
         if (raging || phasing) p.stunnedUntil = 0;
@@ -440,14 +560,14 @@ export class GameRoom extends Server {
           const speed = PLAYER_SPEED * mult;
           const nx = p.x + dx * speed * dt;
           const ny = p.y + dy * speed * dt;
-          const stuck = !phasing && WALLS.some(w => circleHitsRect(p.x, p.y, PLAYER_R, w));
+          const stuck = !phasing && map.walls.some(w => circleHitsRect(p.x, p.y, PLAYER_R, w));
           const freeMove = phasing || stuck;
           const okX = freeMove
-            ? (nx - PLAYER_R >= 0 && nx + PLAYER_R <= MAP_W)
-            : tryMove(nx, p.y, PLAYER_R);
+            ? (nx - PLAYER_R >= 0 && nx + PLAYER_R <= map.w)
+            : tryMove(nx, p.y, PLAYER_R, map);
           const okY = freeMove
-            ? (ny - PLAYER_R >= 0 && ny + PLAYER_R <= MAP_H)
-            : tryMove(p.x, ny, PLAYER_R);
+            ? (ny - PLAYER_R >= 0 && ny + PLAYER_R <= map.h)
+            : tryMove(p.x, ny, PLAYER_R, map);
           if (okX) p.x = nx;
           if (okY) p.y = ny;
         }
@@ -503,10 +623,10 @@ export class GameRoom extends Server {
         b.y += b.vy * dt;
         b.life -= dt;
         const expired = b.life <= 0;
-        const outOfMap = b.x < 0 || b.x > MAP_W || b.y < 0 || b.y > MAP_H;
+        const outOfMap = b.x < 0 || b.x > map.w || b.y < 0 || b.y > map.h;
         let wallHit = false;
         if (b.kind !== "laser") {
-          for (const w of WALLS) {
+          for (const w of map.walls) {
             if (b.x >= w.x && b.x <= w.x + w.w && b.y >= w.y && b.y <= w.y + w.h) {
               wallHit = true; break;
             }
@@ -540,7 +660,7 @@ export class GameRoom extends Server {
               const dx = p.x - b.x, dy = p.y - b.y;
               if (dx * dx + dy * dy < BOMB_RADIUS * BOMB_RADIUS) {
                 if (p.role === "hider") p.alive = false;
-                else if (p.id !== b.owner) p.stunnedUntil = now + STUN_MS;
+                else if (p.id !== b.owner) applyStun(p, now);
               }
             }
             for (const c of this.clones) {
@@ -553,7 +673,7 @@ export class GameRoom extends Server {
               const dx = bot.x - b.x, dy = bot.y - b.y;
               if (dx * dx + dy * dy < BOMB_RADIUS * BOMB_RADIUS) {
                 if (bot.role === "hider") { bot.alive = false; bot.respawnAt = now + 3000; }
-                else bot.stunnedUntil = now + STUN_MS;
+                else applyStun(bot, now);
               }
             }
             this.explosions.push({ id: this.nextBulletId++, x: b.x, y: b.y, r: BOMB_RADIUS, expiresAt: now + 700 });
@@ -566,17 +686,17 @@ export class GameRoom extends Server {
             if (owner && owner.alive) {
               let tx = b.x, ty = b.y;
               if (wallHit) { tx -= b.vx * dt * 1.2; ty -= b.vy * dt * 1.2; }
-              tx = Math.max(PLAYER_R + 2, Math.min(MAP_W - PLAYER_R - 2, tx));
-              ty = Math.max(PLAYER_R + 2, Math.min(MAP_H - PLAYER_R - 2, ty));
-              if (isInsideWall(tx, ty, PLAYER_R)) {
+              tx = Math.max(PLAYER_R + 2, Math.min(map.w - PLAYER_R - 2, tx));
+              ty = Math.max(PLAYER_R + 2, Math.min(map.h - PLAYER_R - 2, ty));
+              if (isInsideWall(tx, ty, PLAYER_R, map)) {
                 const nudges = [[0,0],[24,0],[-24,0],[0,24],[0,-24],[40,0],[-40,0],[0,40],[0,-40],[28,28],[-28,-28],[28,-28],[-28,28]];
                 let placed = false;
                 for (const [ox, oy] of nudges) {
-                  const nx = Math.max(PLAYER_R + 2, Math.min(MAP_W - PLAYER_R - 2, tx + ox));
-                  const ny = Math.max(PLAYER_R + 2, Math.min(MAP_H - PLAYER_R - 2, ty + oy));
-                  if (!isInsideWall(nx, ny, PLAYER_R)) { owner.x = nx; owner.y = ny; placed = true; break; }
+                  const nx = Math.max(PLAYER_R + 2, Math.min(map.w - PLAYER_R - 2, tx + ox));
+                  const ny = Math.max(PLAYER_R + 2, Math.min(map.h - PLAYER_R - 2, ty + oy));
+                  if (!isInsideWall(nx, ny, PLAYER_R, map)) { owner.x = nx; owner.y = ny; placed = true; break; }
                 }
-                if (!placed) { const s = randomSpawn(); owner.x = s.x; owner.y = s.y; }
+                if (!placed) { const s = randomSpawn(map); owner.x = s.x; owner.y = s.y; }
               } else { owner.x = tx; owner.y = ty; }
             }
             continue;
@@ -586,13 +706,13 @@ export class GameRoom extends Server {
           if (expired || outOfMap) continue;
           if (hitPlayer) {
             if (hitPlayer.role === "hider") hitPlayer.alive = false;
-            else hitPlayer.stunnedUntil = now + STUN_MS;
+            else applyStun(hitPlayer, now);
             continue;
           }
           if (hitClone) { hitClone.alive = false; continue; }
           if (hitBot) {
             if (hitBot.role === "hider") { hitBot.alive = false; hitBot.respawnAt = now + 3000; }
-            else hitBot.stunnedUntil = now + STUN_MS;
+            else applyStun(hitBot, now);
             continue;
           }
           next.push(b);
@@ -601,9 +721,9 @@ export class GameRoom extends Server {
           if (hitPlayer) {
             if (b.kind === "lethal") {
               if (hitPlayer.role === "hider") hitPlayer.alive = false;
-              else hitPlayer.stunnedUntil = now + STUN_MS;
+              else applyStun(hitPlayer, now);
             } else {
-              hitPlayer.stunnedUntil = now + STUN_MS;
+              applyStun(hitPlayer, now);
             }
             continue;
           }
@@ -611,9 +731,9 @@ export class GameRoom extends Server {
           if (hitBot) {
             if (b.kind === "lethal") {
               if (hitBot.role === "hider") { hitBot.alive = false; hitBot.respawnAt = now + 3000; }
-              else hitBot.stunnedUntil = now + STUN_MS;
+              else applyStun(hitBot, now);
             } else if (hitBot.role === "seeker") {
-              hitBot.stunnedUntil = now + STUN_MS;
+              applyStun(hitBot, now);
             }
             continue;
           }
@@ -653,8 +773,8 @@ export class GameRoom extends Server {
         const step = CLONE_SPEED * dt;
         const nx = c.x + dx * step;
         const ny = c.y + dy * step;
-        if (tryMove(nx, c.y, PLAYER_R)) c.x = nx;
-        if (tryMove(c.x, ny, PLAYER_R)) c.y = ny;
+        if (tryMove(nx, c.y, PLAYER_R, map)) c.x = nx;
+        if (tryMove(c.x, ny, PLAYER_R, map)) c.y = ny;
 
         // fake stun shots at nearest seeker
         if (nearest && bestD < CLONE_SHOT_RANGE * CLONE_SHOT_RANGE) {
@@ -682,7 +802,7 @@ export class GameRoom extends Server {
       for (const bot of this.bots) {
         if (!bot.alive) {
           if (now >= bot.respawnAt) {
-            const s = randomSpawn();
+            const s = randomSpawn(map);
             bot.x = s.x; bot.y = s.y;
             bot.alive = true;
             bot.stunnedUntil = 0;
@@ -710,8 +830,8 @@ export class GameRoom extends Server {
             const len = Math.hypot(dx, dy) || 1;
             const nx = bot.x + (dx / len) * PLAYER_SPEED * SEEKER_SPEED_MULT * dt;
             const ny = bot.y + (dy / len) * PLAYER_SPEED * SEEKER_SPEED_MULT * dt;
-            if (tryMove(nx, bot.y, PLAYER_R)) bot.x = nx;
-            if (tryMove(bot.x, ny, PLAYER_R)) bot.y = ny;
+            if (tryMove(nx, bot.y, PLAYER_R, map)) bot.x = nx;
+            if (tryMove(bot.x, ny, PLAYER_R, map)) bot.y = ny;
             bot.angle = Math.atan2(dy, dx);
             if (bestD < 420 * 420 && now - bot.lastShotAt >= SEEKER_FIRE_MS * 1.3) {
               bot.lastShotAt = now;
@@ -736,8 +856,8 @@ export class GameRoom extends Server {
             }
             const nx = bot.x + bot.wanderDx * PLAYER_SPEED * dt;
             const ny = bot.y + bot.wanderDy * PLAYER_SPEED * dt;
-            if (tryMove(nx, bot.y, PLAYER_R)) bot.x = nx;
-            if (tryMove(bot.x, ny, PLAYER_R)) bot.y = ny;
+            if (tryMove(nx, bot.y, PLAYER_R, map)) bot.x = nx;
+            if (tryMove(bot.x, ny, PLAYER_R, map)) bot.y = ny;
             bot.angle = Math.atan2(bot.wanderDy, bot.wanderDx);
           }
         } else {
@@ -768,8 +888,8 @@ export class GameRoom extends Server {
           }
           const nx = bot.x + dx * PLAYER_SPEED * dt;
           const ny = bot.y + dy * PLAYER_SPEED * dt;
-          if (tryMove(nx, bot.y, PLAYER_R)) bot.x = nx;
-          if (tryMove(bot.x, ny, PLAYER_R)) bot.y = ny;
+          if (tryMove(nx, bot.y, PLAYER_R, map)) bot.x = nx;
+          if (tryMove(bot.x, ny, PLAYER_R, map)) bot.y = ny;
           if (nearest && bestD < CLONE_SHOT_RANGE * CLONE_SHOT_RANGE && now - bot.lastShotAt >= HIDER_FIRE_MS) {
             bot.lastShotAt = now;
             const a = Math.atan2(nearest.y - bot.y, nearest.x - bot.x) + (Math.random() - 0.5) * 0.15;
@@ -804,6 +924,7 @@ export class GameRoom extends Server {
       phase: this.phase,
       testMode: this.testMode,
       hostId: this.hostId,
+      mapId: this.map.id,
       settings: this.settings,
       winner: this.winner,
       timeLeft: this.phase === "playing" ? Math.max(0, Math.ceil((this.roundEndsAt - now) / 1000)) : 0,
