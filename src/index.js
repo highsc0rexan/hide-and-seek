@@ -38,7 +38,7 @@ const CLONE_FIRE_MIN_MS = 900;
 const CLONE_FIRE_JITTER_MS = 700;
 const PHASE_SPEED_MULT = 1.9;
 
-function makeMap(id, name, w, h, interior) {
+function makeMap(id, name, w, h, interior, extras = {}) {
   const walls = [
     { x: 0, y: 0, w, h: 20 },
     { x: 0, y: h - 20, w, h: 20 },
@@ -46,7 +46,7 @@ function makeMap(id, name, w, h, interior) {
     { x: w - 20, y: 0, w: 20, h },
     ...interior,
   ];
-  return { id, name, w, h, walls };
+  return { id, name, w, h, walls, followCam: false, ...extras };
 }
 
 const MAPS = [
@@ -133,6 +133,70 @@ const MAPS = [
     { x: 1000, y: 940, w: 260, h: 30 },
     { x: 1400, y: 900, w: 260, h: 30 },
   ]),
+  makeMap("warehouse", "Warehouse", 3000, 1800, [
+    { x: 240, y: 220, w: 220, h: 200 },
+    { x: 560, y: 320, w: 160, h: 160 },
+    { x: 840, y: 180, w: 260, h: 140 },
+    { x: 1200, y: 260, w: 180, h: 200 },
+    { x: 1480, y: 160, w: 260, h: 160 },
+    { x: 1840, y: 240, w: 200, h: 200 },
+    { x: 2140, y: 140, w: 240, h: 180 },
+    { x: 2480, y: 240, w: 220, h: 220 },
+    { x: 2780, y: 180, w: 30, h: 300 },
+    { x: 320, y: 560, w: 30, h: 260 },
+    { x: 320, y: 560, w: 260, h: 30 },
+    { x: 700, y: 680, w: 260, h: 30 },
+    { x: 960, y: 680, w: 30, h: 220 },
+    { x: 1120, y: 580, w: 30, h: 300 },
+    { x: 1300, y: 760, w: 300, h: 30 },
+    { x: 1700, y: 600, w: 30, h: 320 },
+    { x: 1880, y: 720, w: 280, h: 30 },
+    { x: 2260, y: 600, w: 30, h: 320 },
+    { x: 2420, y: 780, w: 280, h: 30 },
+    { x: 240, y: 1060, w: 220, h: 200 },
+    { x: 560, y: 1180, w: 200, h: 180 },
+    { x: 880, y: 1100, w: 240, h: 200 },
+    { x: 1240, y: 1220, w: 200, h: 180 },
+    { x: 1540, y: 1080, w: 260, h: 220 },
+    { x: 1880, y: 1200, w: 200, h: 180 },
+    { x: 2180, y: 1080, w: 240, h: 220 },
+    { x: 2520, y: 1200, w: 220, h: 180 },
+    { x: 320, y: 1500, w: 300, h: 30 },
+    { x: 720, y: 1480, w: 30, h: 220 },
+    { x: 900, y: 1560, w: 280, h: 30 },
+    { x: 1280, y: 1460, w: 30, h: 240 },
+    { x: 1440, y: 1540, w: 300, h: 30 },
+    { x: 1860, y: 1440, w: 30, h: 260 },
+    { x: 2020, y: 1560, w: 300, h: 30 },
+    { x: 2420, y: 1460, w: 30, h: 240 },
+    { x: 2600, y: 1540, w: 260, h: 30 },
+  ], { followCam: true }),
+  makeMap("metropolis", "Metropolis", 3400, 2100, [
+    { x: 200, y: 180, w: 380, h: 280 },
+    { x: 720, y: 180, w: 320, h: 280 },
+    { x: 1180, y: 180, w: 360, h: 280 },
+    { x: 1680, y: 180, w: 380, h: 280 },
+    { x: 2200, y: 180, w: 320, h: 280 },
+    { x: 2660, y: 180, w: 380, h: 280 },
+    { x: 200, y: 620, w: 300, h: 320 },
+    { x: 640, y: 620, w: 380, h: 320 },
+    { x: 1160, y: 620, w: 320, h: 320 },
+    { x: 1620, y: 620, w: 360, h: 320 },
+    { x: 2120, y: 620, w: 380, h: 320 },
+    { x: 2640, y: 620, w: 360, h: 320 },
+    { x: 200, y: 1080, w: 380, h: 280 },
+    { x: 720, y: 1080, w: 340, h: 280 },
+    { x: 1200, y: 1080, w: 320, h: 280 },
+    { x: 1660, y: 1080, w: 380, h: 280 },
+    { x: 2180, y: 1080, w: 320, h: 280 },
+    { x: 2640, y: 1080, w: 380, h: 280 },
+    { x: 200, y: 1500, w: 340, h: 360 },
+    { x: 680, y: 1500, w: 380, h: 360 },
+    { x: 1200, y: 1500, w: 320, h: 360 },
+    { x: 1660, y: 1500, w: 340, h: 360 },
+    { x: 2140, y: 1500, w: 380, h: 360 },
+    { x: 2660, y: 1500, w: 320, h: 360 },
+  ], { followCam: true }),
 ];
 
 function getMap(id) {
@@ -260,7 +324,7 @@ export class GameRoom extends Server {
       lastSecondaryAt: 0,
       lastLaserShotAt: 0,
     });
-    connection.send(JSON.stringify({ type: "init", id: connection.id, map: { id: this.map.id, name: this.map.name, w: this.map.w, h: this.map.h, walls: this.map.walls } }));
+    connection.send(JSON.stringify({ type: "init", id: connection.id, map: { id: this.map.id, name: this.map.name, w: this.map.w, h: this.map.h, walls: this.map.walls, followCam: !!this.map.followCam } }));
   }
 
   onClose(connection) {
@@ -336,7 +400,7 @@ export class GameRoom extends Server {
       this.map = next;
       this.broadcast(JSON.stringify({
         type: "mapUpdate",
-        map: { id: next.id, name: next.name, w: next.w, h: next.h, walls: next.walls },
+        map: { id: next.id, name: next.name, w: next.w, h: next.h, walls: next.walls, followCam: !!next.followCam },
       }));
       for (const pl of this.players.values()) {
         const s = randomSpawn(this.map);

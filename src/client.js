@@ -162,12 +162,32 @@ function resize() {
   const pad = 24;
   const maxW = window.innerWidth - pad * 2;
   const maxH = window.innerHeight - pad * 2;
+  if (mapInfo.followCam) {
+    const w = Math.max(600, Math.min(1400, maxW));
+    const h = Math.max(400, Math.min(900, maxH));
+    canvas.width = w;
+    canvas.height = h;
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    cameraScale = 1;
+    return;
+  }
   const scale = Math.min(maxW / mapInfo.w, maxH / mapInfo.h, 1);
   canvas.style.width = mapInfo.w * scale + "px";
   canvas.style.height = mapInfo.h * scale + "px";
   canvas.width = mapInfo.w;
   canvas.height = mapInfo.h;
   cameraScale = scale;
+}
+
+function getCamera() {
+  if (!mapInfo || !mapInfo.followCam) return { x: 0, y: 0 };
+  const me = getMyPlayer();
+  if (!me) return { x: 0, y: 0 };
+  return {
+    x: Math.max(0, Math.min(mapInfo.w - canvas.width, me.x - canvas.width / 2)),
+    y: Math.max(0, Math.min(mapInfo.h - canvas.height, me.y - canvas.height / 2)),
+  };
 }
 window.addEventListener("resize", resize);
 
@@ -180,7 +200,8 @@ function sendInputLoop() {
   if (socket && socket.readyState === 1 && state && state.phase === "playing") {
     const me = getMyPlayer();
     if (me) {
-      const angle = Math.atan2(mouse.y - me.y, mouse.x - me.x);
+      const cam = getCamera();
+      const angle = Math.atan2(mouse.y + cam.y - me.y, mouse.x + cam.x - me.x);
       socket.send(JSON.stringify({
         type: "input",
         up: keys.w, down: keys.s, left: keys.a, right: keys.d,
@@ -296,6 +317,10 @@ function draw() {
   if (!mapInfo) return;
   ctx.fillStyle = "#14171f";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const cam = getCamera();
+  ctx.save();
+  ctx.translate(-cam.x, -cam.y);
 
   // grid
   ctx.strokeStyle = "#1c2030";
@@ -454,6 +479,8 @@ function draw() {
     }
   }
 
+  ctx.restore();
+
   // Fog of war: seeker can only see inside a circle around themselves (rage clears fog)
   const me = viewer;
   if (me && me.role === "seeker" && !me.raging && state.phase === "playing") {
@@ -461,8 +488,8 @@ function draw() {
     ctx.save();
     ctx.fillStyle = "#000000";
     ctx.beginPath();
-    ctx.rect(0, 0, mapInfo.w, mapInfo.h);
-    ctx.arc(me.x, me.y, radius, 0, Math.PI * 2, true);
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.arc(me.x - cam.x, me.y - cam.y, radius, 0, Math.PI * 2, true);
     ctx.fill("evenodd");
     ctx.restore();
 
@@ -473,12 +500,12 @@ function draw() {
         ctx.shadowBlur = 16;
         ctx.fillStyle = "#ff3b3b";
         ctx.beginPath();
-        ctx.arc(x, y, 7, 0, Math.PI * 2);
+        ctx.arc(x - cam.x, y - cam.y, 7, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = "rgba(255,80,80,0.7)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(x, y, 14, 0, Math.PI * 2);
+        ctx.arc(x - cam.x, y - cam.y, 14, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       };
