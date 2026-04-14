@@ -513,6 +513,42 @@ function draw() {
         if (p.role === "hider" && p.alive && !p.phasing) blip(p.x, p.y);
       }
       if (state.clones) for (const c of state.clones) blip(c.x, c.y);
+
+      if (mapInfo.followCam) {
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const margin = 28;
+        const drawArrow = (wx, wy) => {
+          const sx = wx - cam.x;
+          const sy = wy - cam.y;
+          if (sx >= 0 && sx <= canvas.width && sy >= 0 && sy <= canvas.height) return;
+          const dx = sx - cx;
+          const dy = sy - cy;
+          const scale = Math.min(
+            (cx - margin) / Math.max(Math.abs(dx), 1),
+            (cy - margin) / Math.max(Math.abs(dy), 1)
+          );
+          const ax = cx + dx * scale;
+          const ay = cy + dy * scale;
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(Math.atan2(dy, dx));
+          ctx.shadowColor = "#ff3b3b";
+          ctx.shadowBlur = 16;
+          ctx.fillStyle = "#ff3b3b";
+          ctx.beginPath();
+          ctx.moveTo(18, 0);
+          ctx.lineTo(-12, 11);
+          ctx.lineTo(-12, -11);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        };
+        for (const p of state.players) {
+          if (p.role === "hider" && p.alive && !p.phasing) drawArrow(p.x, p.y);
+        }
+        if (state.clones) for (const c of state.clones) drawArrow(c.x, c.y);
+      }
     }
   }
 }
