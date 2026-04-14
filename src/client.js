@@ -129,10 +129,11 @@ document.querySelectorAll("#settings-panel input[data-setting]").forEach(input =
 });
 
 window.addEventListener("keydown", (e) => {
-  if (e.key === "w" || e.key === "W") keys.w = true;
-  if (e.key === "a" || e.key === "A") keys.a = true;
-  if (e.key === "s" || e.key === "S") keys.s = true;
-  if (e.key === "d" || e.key === "D") keys.d = true;
+  if (e.key === "w" || e.key === "W" || e.key === "ArrowUp") keys.w = true;
+  if (e.key === "a" || e.key === "A" || e.key === "ArrowLeft") keys.a = true;
+  if (e.key === "s" || e.key === "S" || e.key === "ArrowDown") keys.s = true;
+  if (e.key === "d" || e.key === "D" || e.key === "ArrowRight") keys.d = true;
+  if (e.key.startsWith("Arrow")) e.preventDefault();
   if (!socket || socket.readyState !== 1) return;
   if (e.key === "q" || e.key === "Q") {
     socket.send(JSON.stringify({ type: "ability" }));
@@ -143,10 +144,10 @@ window.addEventListener("keydown", (e) => {
   }
 });
 window.addEventListener("keyup", (e) => {
-  if (e.key === "w" || e.key === "W") keys.w = false;
-  if (e.key === "a" || e.key === "A") keys.a = false;
-  if (e.key === "s" || e.key === "S") keys.s = false;
-  if (e.key === "d" || e.key === "D") keys.d = false;
+  if (e.key === "w" || e.key === "W" || e.key === "ArrowUp") keys.w = false;
+  if (e.key === "a" || e.key === "A" || e.key === "ArrowLeft") keys.a = false;
+  if (e.key === "s" || e.key === "S" || e.key === "ArrowDown") keys.s = false;
+  if (e.key === "d" || e.key === "D" || e.key === "ArrowRight") keys.d = false;
 });
 canvas.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
